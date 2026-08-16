@@ -1,0 +1,45 @@
+# Charcoal Outreach Bot
+
+Bot auto-offer WhatsApp/Email untuk lead export charcoal PT Cahaya Woodchar International, jalan
+100% di cloud (GitHub Actions) - **tidak butuh device/PC pribadi nyala terus**. Baca & tulis balik
+status ke Google Sheet "Export Charcoal Business" (tab `CLIENT`).
+
+## Cara kerja singkat
+
+Tiap 30 menit, bot:
+1. Baca semua baris di tab `CLIENT`.
+2. Hitung jam lokal tiap negara klien (bukan pakai kolom manual di sheet) - kirim hanya kalau
+   **Senin-Jumat, jam 09:00-17:00 waktu lokal klien**.
+3. Skip klien yang `FCBK` = `LOST` atau `NO`, atau yang sudah kena 3x offer (`LAST_ROUND` = 3).
+4. Kirim **WhatsApp dulu** (via Fonnte) - kalau nomor tidak ada/gagal, **fallback ke Email** (Gmail
+   SMTP).
+5. Tulis balik ke sheet: kolom offer round terkait = `DONE`, plus `LAST_ROUND` dan `LAST_SENT_AT`.
+
+Detail lengkap ada di `DOCUMENTATION.docx`.
+
+## Setup
+
+1. `pip install -r requirements.txt`
+2. Copy `.env.example` ke `.env`, isi:
+   - `FONNTE_TOKEN` - daftar gratis di [fonnte.com](https://fonnte.com), scan QR nomor
+     `+62 812-2564-6585` sekali di dashboard mereka.
+   - `GMAIL_ADDRESS` / `GMAIL_APP_PASSWORD` - App Password dari
+     [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) (butuh 2FA aktif).
+   - `GOOGLE_SHEET_ID` / `GOOGLE_SERVICE_ACCOUNT_JSON` - service account Google Cloud, sheet-nya
+     harus di-share (role Editor) ke email service account itu.
+3. Test dulu: `DRY_RUN=true python main.py` - cek log, gak ada yang benar-benar terkirim.
+4. Kalau sudah oke, set semua env var di atas sebagai **GitHub Secrets** di repo ini (Settings >
+   Secrets and variables > Actions), termasuk `DRY_RUN=false` kalau sudah siap live.
+5. Workflow `.github/workflows/outreach.yml` otomatis jalan tiap 30 menit setelah di-push ke
+   GitHub. Bisa juga trigger manual lewat tab Actions > Run workflow.
+
+## File penting
+
+| File | Fungsi |
+|---|---|
+| `main.py` | orchestrator - loop semua baris, decide kirim/skip |
+| `timezone_rules.py` + `country_timezones.py` | hitung jam kerja lokal per negara |
+| `sheet_client.py` | baca/tulis Google Sheet |
+| `templates.py` | isi pesan WA & Email, personalisasi per klien |
+| `send_whatsapp.py` | kirim via Fonnte |
+| `send_email.py` | kirim via Gmail SMTP |
