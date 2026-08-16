@@ -18,6 +18,12 @@ _SCOPES = [
 
 EXTRA_COLUMNS = ["LAST_ROUND", "LAST_SENT_AT"]
 
+# Sheet asli punya 2 baris header: baris 1 = label grup yang di-merge (mis. "[merged] FIRST"),
+# baris 2 = header kolom asli ("No, Company, Country, ..."). Semua kode di sini harus baca/tulis
+# header di baris 2, BUKAN baris 1 - kalau baca baris 1, header.index("WHATSAPP") bakal ValueError
+# karena "WHATSAPP" cuma ada di baris 2. Dikonfirmasi manual lewat gspread langsung ke sheet asli.
+HEADER_ROW = 2
+
 log = logging.getLogger(__name__)
 
 
@@ -39,7 +45,7 @@ def get_worksheet():
 def ensure_extra_columns(ws):
     """Tambah header LAST_ROUND/LAST_SENT_AT di kolom kosong pertama kalau belum ada. Return dict
     {nama_kolom: index_1based}."""
-    header = ws.row_values(1)
+    header = ws.row_values(HEADER_ROW)
     col_index = {}
     next_col = len(header) + 1
     changed = False
@@ -47,7 +53,7 @@ def ensure_extra_columns(ws):
         if name in header:
             col_index[name] = header.index(name) + 1
         else:
-            ws.update_cell(1, next_col, name)
+            ws.update_cell(HEADER_ROW, next_col, name)
             col_index[name] = next_col
             next_col += 1
             changed = True
@@ -58,10 +64,23 @@ def ensure_extra_columns(ws):
 
 def load_rows(ws):
     """Return list of dict per baris client (header row jadi key), plus '_row_number' (1-based,
-    termasuk header, jadi baris pertama data = 2)."""
-    records = ws.get_all_records()
+    termasuk header, jadi baris pertama data = 2). Pakai get_all_values() manual (bukan
+    get_all_records()) karena header row di sheet asli punya banyak kolom kosong/duplikat
+    (WHATSAPP/EMAIL muncul 3x untuk FIRST/SECOND/THIRD) - get_all_records() gspread error kalau
+    ada header kosong duplikat. Kolom kosong di-skip, duplikat nama diambil kemunculan PERTAMA
+    saja (cukup buat field yang dipakai bot: Company/Country/Phone/WhatsApp/Email/FCBK/dst, yang
+    semuanya unik)."""
+    all_values = ws.get_all_values()
+    header = all_values[HEADER_ROW - 1]
     rows = []
-    for i, rec in enumerate(records, start=2):
+    for i, raw_row in enumerate(all_values[HEADER_ROW:], start=HEADER_ROW + 1):
+        if not any(cell.strip() for cell in raw_row):
+            continue  # baris kosong total, skip
+        rec = {}
+        for col_name, value in zip(header, raw_row):
+            if not col_name or col_name in rec:
+                continue
+            rec[col_name] = value
         rec["_row_number"] = i
         rows.append(rec)
     return rows
@@ -73,7 +92,7 @@ def mark_offer_sent(ws, col_index, row_number, round_number, channel, when_iso):
     muncul 3x untuk FIRST/SECOND/THIRD) - gspread get_all_records akan collapse nama duplikat, jadi
     update kolom round pakai offset kolom manual berdasarkan urutan header mentah, bukan lewat dict
     hasil get_all_records."""
-    header = ws.row_values(1)
+    header = ws.row_values(HEADER_ROW)
     round_offset = {1: 0, 2: 2, 3: 4}[round_number]  # tiap round = 2 kolom (WHATSAPP, EMAIL)
     try:
         first_whatsapp_col = header.index("WHATSAPP") + 1
