@@ -34,31 +34,14 @@ def _first_name(contact_person):
     return name.split()[0] if name else "there"
 
 
-def render_email(client_row, round_number):
-    company = client_row.get("Company", "").strip() or "your company"
-    contact = _first_name(client_row.get("Contact Person"))
-    product_interest = client_row.get("Product Interest", "").strip()
-    country = client_row.get("Country", "").strip()
-
+def _body_middle(product_interest, country):
+    """Bagian tengah pesan yang PERSIS SAMA di email & WA - opening sampai catalogue line, dengan
+    paragraph break yang identik. Cuma salam pembuka & signature yang beda per channel (lihat
+    render_email/render_whatsapp)."""
     product_lines = "\n".join(f"✅ {p}" for p in _ALL_PRODUCTS)
-
-    opening = (
-        f"We came across your company and understand that you are currently sourcing "
-        f"{product_interest or 'charcoal'} in {country}. We believe our products could be a "
-        f"good fit for your requirements."
-    )
-
-    subject_prefix = {1: "", 2: "Following Up – ", 3: "Last Follow-Up – "}[round_number]
-    subject = f"{subject_prefix}Charcoal Supply Partnership – PT Cahaya Woodchar International x {company}"
-
-    phone_lines = "\n".join(f"\U0001F4F1 {p}" for p in SENDER_PHONES)
-
-    body = f"""Dear {contact},
-
-My name is {SENDER_NAME}, {SENDER_TITLE} at {SENDER_COMPANY}, a charcoal exporter based in \
-Lampung, Indonesia.
-
-{opening}
+    return f"""We came across your company and understand that you are currently sourcing \
+{product_interest or 'charcoal'} in {country}. We believe our products could be a good fit for \
+your requirements.
 
 We can supply:
 {product_lines}
@@ -77,7 +60,27 @@ Why partner with us:
 Could you please share your preferred charcoal specifications and estimated order volume? I can \
 send you our product specifications, photos, current pricing, and sample arrangement details.
 
-Product catalogue: {SENDER_CATALOGUE_URL}
+Product catalogue: {SENDER_CATALOGUE_URL}"""
+
+
+def render_email(client_row, round_number):
+    company = client_row.get("Company", "").strip() or "your company"
+    contact = _first_name(client_row.get("Contact Person"))
+    product_interest = client_row.get("Product Interest", "").strip()
+    country = client_row.get("Country", "").strip()
+
+    subject_prefix = {1: "", 2: "Following Up – ", 3: "Last Follow-Up – "}[round_number]
+    subject = f"{subject_prefix}Charcoal Supply Partnership – PT Cahaya Woodchar International x {company}"
+
+    phone_lines = "\n".join(f"\U0001F4F1 {p}" for p in SENDER_PHONES)
+    middle = _body_middle(product_interest, country)
+
+    body = f"""Dear {contact},
+
+My name is {SENDER_NAME}, {SENDER_TITLE} at {SENDER_COMPANY}, a charcoal exporter based in \
+Lampung, Indonesia.
+
+{middle}
 
 Best regards,
 {SENDER_NAME}
@@ -94,30 +97,16 @@ def render_whatsapp(client_row, round_number):
     product_interest = client_row.get("Product Interest", "").strip()
     country = client_row.get("Country", "").strip()
 
-    product_lines = "\n".join(f"✅ {p}" for p in _ALL_PRODUCTS)
+    middle = _body_middle(product_interest, country)
 
-    intro = (
-        f"Hi {contact}, this is {SENDER_NAME} from *{SENDER_COMPANY}*, a charcoal exporter based "
-        f"in Lampung, Indonesia.\n\n"
-        f"We came across your company and understand that you are currently sourcing "
-        f"{product_interest or 'charcoal'} in {country}. We believe our products could be a good "
-        f"fit for your requirements."
-    )
+    return f"""Hi {contact},
 
-    return (
-        f"{intro}\n\n"
-        f"We can supply:\n{product_lines}\n\n"
-        f"Our wood charcoal can be supplied according to your requirements, including wood type, "
-        f"lump size, fixed carbon, ash content, moisture, packaging, and order volume.\n\n"
-        f"Why partner with us:\n"
-        f"* Competitive FOB/CIF pricing\n"
-        f"* Consistent export-grade quality\n"
-        f"* Reliable supply from Indonesia\n"
-        f"* Customizable packaging\n"
-        f"* Flexible export and shipping arrangements\n\n"
-        f"Could you please share your preferred charcoal specifications and estimated order "
-        f"volume? I can send you our product specifications, photos, current pricing, and sample "
-        f"arrangement details.\n"
-        f"Catalogue: {SENDER_CATALOGUE_URL}\n\n"
-        f"Best regards,\n{SENDER_NAME} | {SENDER_TITLE}, {SENDER_COMPANY}"
-    )
+This is {SENDER_NAME}, {SENDER_TITLE} at *{SENDER_COMPANY}*, a charcoal exporter based in \
+Lampung, Indonesia.
+
+{middle}
+
+Best regards,
+{SENDER_NAME}
+{SENDER_TITLE}
+{SENDER_COMPANY}"""
