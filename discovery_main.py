@@ -1,0 +1,111 @@
+"""Lead discovery entrypoint - separate from main.py (outreach). Scrapes B2B directories, Google
+search, and (if GMAPS_LIST_URLS is set) Google Maps shared lists, dedupes against the live CLIENT
+sheet, enriches missing email/contact via each lead's website, and appends genuinely new leads.
+
+Does NOT send any outreach itself - new rows land with Role/Product Interest blank and get picked
+up by main.py's normal cron cycle once someone fills in enough context (or as-is, since main.py
+only needs Country + a contact channel to start offering).
+
+Run manually: python discovery_main.py
+Or via .github/workflows/lead-discovery.yml (scheduled).
+"""
+
+import logging
+
+from config import GMAPS_LIST_URLS, DISCOVERY_DRY_RUN
+from sheet_client import get_worksheet, ensure_extra_columns, load_rows, append_new_leads
+from discovery import web_scraper, dedupe, enrichment
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger(__name__)
+
+_MAX_ENRICH = 60  # cap website-enrichment HTTP calls per run, keeps runtime/cost bounded
+
+
+def _normalize_gmaps_lead(row):
+    return {
+        "company_name": row.get("name") or "",
+        "country": (
+            dedupe.country_from_phone(row.get("phone") or "")
+            or dedupe.country_from_address(row.get("address") or "")
+            or ""
+        ),
+        "phone": row.get("phone") or "",
+        "website": row.get("website") or "",
+        "email": "",
+        "source": row.get("source_list_url", "gmaps"),
+    }
+
+
+def run():
+    log.info("=== Lead discovery run start ===")
+
+    web_leads = web_scraper.scrape_all()
+
+    gmaps_leads = []
+    if GMAPS_LIST_URLS:
+        log.info(f"[discovery] scraping {len(GMAPS_LIST_URLS)} Google Maps list(s)...")
+        from discovery import gmaps_scraper
+        raw_gmaps = gmaps_scraper.scrape_lists(GMAPS_LIST_URLS)
+        gmaps_leads = [_normalize_gmaps_lead(r) for r in raw_gmaps if r.get("name")]
+    else:
+        log.info("[discovery] GMAPS_LIST_URLS kosong, skip Google Maps scraping.")
+
+    all_leads = dedupe.dedupe_batch(web_leads + gmaps_leads)
+    log.info(f"[discovery] {len(all_leads)} lead unik setelah dedup dalam batch ini.")
+
+    ws = get_worksheet()
+    ensure_extra_columns(ws)
+    sheet_rows = load_rows(ws)
+    existing_names, existing_phones = dedupe.existing_keys(sheet_rows)
+
+    new_leads = [
+        lead for lead in all_leads
+        if dedupe.is_new_lead(lead, existing_names, existing_phones)
+    ]
+    log.info(f"[discovery] {len(new_leads)} lead genuinely baru (belum ada di CLIENT sheet).")
+
+    enrich_count = 0
+    for lead in new_leads:
+        if enrich_count >= _MAX_ENRICH:
+            break
+        if lead.get("email"):
+            continue
+        website = lead.get("website", "")
+        if not website:
+            continue
+        result = enrichment.enrich_from_website(website)
+        enrich_count += 1
+        if result["email"]:
+            lead["email"] = result["email"]
+        if result["contact_person"] and not lead.get("contact_person"):
+            lead["contact_person"] = result["contact_person"]
+    log.info(f"[discovery] {enrich_count} website di-enrich buat cari email/kontak.")
+
+    to_append = [{
+        "company": lead.get("company_name", ""),
+        "country": lead.get("country", ""),
+        "role": "",
+        "product_interest": "",
+        "contact_person": lead.get("contact_person", ""),
+        "phone": lead.get("phone", ""),
+        "whatsapp": dedupe.to_whatsapp(lead.get("phone", "")) if lead.get("phone") else "",
+        "email": lead.get("email", ""),
+    } for lead in new_leads if lead.get("company_name")]
+
+    with_email = sum(1 for lead in to_append if lead["email"])
+    if DISCOVERY_DRY_RUN:
+        log.info(f"[DRY_RUN] would append {len(to_append)} rows ({with_email} with email) - "
+                  f"sheet NOT modified. Preview:")
+        for lead in to_append[:20]:
+            log.info(f"  - {lead['company']} | {lead['country']} | email={lead['email'] or '(none)'}")
+        if len(to_append) > 20:
+            log.info(f"  ... and {len(to_append) - 20} more")
+    else:
+        added = append_new_leads(ws, to_append)
+        log.info(f"[discovery] {added} baris baru ditambahkan ke sheet ({with_email} dengan email terisi).")
+    log.info("=== Lead discovery run selesai ===")
+
+
+if __name__ == "__main__":
+    run()

@@ -114,3 +114,40 @@ def mark_offer_sent(ws, col_index, row_number, round_number, channel, when_iso):
         current = ws.cell(row_number, final_col).value or ""
         if current.strip().upper() not in ("NO", "LOST"):
             ws.update_cell(row_number, final_col, "PENDING")
+
+
+def append_new_leads(ws, leads):
+    """Append newly-discovered leads (from discovery/) as new rows at the end of the sheet.
+    Each lead dict: company, country, role, product_interest, contact_person, phone, whatsapp,
+    email (all optional except company). "No" is auto-incremented from the current max. Only the
+    first 9 columns (No..Email) are filled - everything else (Day/Hour/STATUS/rounds/FINAL/
+    LAST_ROUND/etc) stays blank, computed live by main.py on the next run same as any other row."""
+    if not leads:
+        return 0
+
+    header = ws.row_values(HEADER_ROW)
+    all_values = ws.get_all_values()
+    existing_nos = [
+        int(row[0]) for row in all_values[HEADER_ROW:]
+        if row and row[0].strip().isdigit()
+    ]
+    next_no = (max(existing_nos) + 1) if existing_nos else 1
+
+    rows_to_append = []
+    for lead in leads:
+        row = [""] * len(header)
+        row[0] = str(next_no)
+        row[1] = lead.get("company", "")
+        row[2] = lead.get("country", "")
+        row[3] = lead.get("role", "")
+        row[4] = lead.get("product_interest", "")
+        row[5] = lead.get("contact_person", "")
+        row[6] = lead.get("phone", "")
+        row[7] = lead.get("whatsapp", "")
+        row[8] = lead.get("email", "")
+        rows_to_append.append(row)
+        next_no += 1
+
+    ws.append_rows(rows_to_append, value_input_option="USER_ENTERED")
+    log.info(f"[sheet] {len(rows_to_append)} lead baru ditambahkan ke CLIENT tab.")
+    return len(rows_to_append)

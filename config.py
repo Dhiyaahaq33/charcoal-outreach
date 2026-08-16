@@ -18,6 +18,17 @@ CLIENT_SHEET_TAB = os.environ.get("CLIENT_SHEET_TAB", "CLIENT").strip()
 
 DRY_RUN = os.environ.get("DRY_RUN", "true").strip().lower() in ("1", "true", "yes")
 
+# Comma-separated Google Maps shared-list URLs (lead discovery only, discovery_main.py) - kosong =
+# skip Maps scraping, cuma jalanin web scraper (TradeIndia/ExportHub/Kompass/Google search).
+GMAPS_LIST_URLS = [
+    u.strip() for u in os.environ.get("GMAPS_LIST_URLS", "").split(",") if u.strip()
+]
+
+# Terpisah dari DRY_RUN outreach di atas - discovery_main.py cuma nulis row baru (gak kirim
+# apa-apa), tapi tetap defaultnya true biar scraper yang belum diverifikasi selector-nya gak
+# ngotorin sheet produksi sebelum di-review.
+DISCOVERY_DRY_RUN = os.environ.get("DISCOVERY_DRY_RUN", "true").strip().lower() in ("1", "true", "yes")
+
 MAX_ROUNDS = 3
 OPEN_HOUR_START = 9   # 09:00 waktu lokal client
 OPEN_HOUR_END = 17    # 17:00 waktu lokal client
