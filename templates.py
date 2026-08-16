@@ -1,8 +1,13 @@
-"""Template WA & Email. Round 1 email disusun PERSIS dari 2 contoh nyata yang dipakai user (offer
-ke T And M Kestekides Trading/Cyprus dan Best Media/Lebanon) - kalimat pembuka & full product list
-gak boleh diubah wordingnya, cuma variabel {ContactPerson}/{ProductInterest}/{Country} yang
-dipersonalisasi. Product list SELALU full 6 item (dikonfirmasi dari contoh Best Media yang Product
-Interest-nya cuma "Wood Charcoal" tapi tetap dikirim full checklist) - bukan dipangkas per klien.
+"""Template WA & Email, disusun PERSIS dari contoh nyata yang dipakai user (offer ke T And M
+Kestekides Trading/Cyprus dan Best Media/Lebanon) - kalimat & full product list gak boleh diubah
+wordingnya, cuma variabel {ContactPerson}/{ProductInterest}/{Country} yang dipersonalisasi. Product
+list SELALU full 6 item (dikonfirmasi dari contoh Best Media yang Product Interest-nya cuma "Wood
+Charcoal" tapi tetap dikirim full checklist) - bukan dipangkas per klien.
+
+Isi pesan SAMA PERSIS di round 1/2/3 dan di WA/Email - user secara eksplisit nolak versi
+"follow-up singkat" yang beda wording per round (dibandingkan screenshot WA round 3 vs email round 1,
+langsung ketauan beda -> user bilang "jelas beda dong"). round_number cuma mempengaruhi subject
+email, bukan isi body/pesan.
 
 SENDER_* diisi tetap sesuai signature: Muhammad Yahya, COO, PT Cahaya Woodchar International.
 """
@@ -37,21 +42,14 @@ def render_email(client_row, round_number):
 
     product_lines = "\n".join(f"✅ {p}" for p in _ALL_PRODUCTS)
 
-    opening = {
-        1: f"We came across your company and understand that you are currently sourcing "
-           f"{product_interest or 'charcoal'} in {country}. We believe our products could be a "
-           f"good fit for your requirements.",
-        2: f"Following up on our previous message - we'd still love the opportunity to supply "
-           f"{company} with high-quality charcoal from Indonesia.",
-        3: f"This is a final follow-up regarding a potential charcoal supply partnership with "
-           f"{company}. We understand timing may not be right, but wanted to leave the door open.",
-    }[round_number]
+    opening = (
+        f"We came across your company and understand that you are currently sourcing "
+        f"{product_interest or 'charcoal'} in {country}. We believe our products could be a "
+        f"good fit for your requirements."
+    )
 
-    subject = {
-        1: f"Charcoal Supply Partnership – PT Cahaya Woodchar International x {company}",
-        2: f"Following Up – Charcoal Supply for {company}",
-        3: f"Last Follow-Up – Charcoal Supply for {company}",
-    }[round_number]
+    subject_prefix = {1: "", 2: "Following Up – ", 3: "Last Follow-Up – "}[round_number]
+    subject = f"{subject_prefix}Charcoal Supply Partnership – PT Cahaya Woodchar International x {company}"
 
     phone_lines = "\n".join(f"\U0001F4F1 {p}" for p in SENDER_PHONES)
 
@@ -92,28 +90,34 @@ Best regards,
 
 
 def render_whatsapp(client_row, round_number):
-    company = client_row.get("Company", "").strip() or "your company"
     contact = _first_name(client_row.get("Contact Person"))
     product_interest = client_row.get("Product Interest", "").strip()
     country = client_row.get("Country", "").strip()
 
     product_lines = "\n".join(f"✅ {p}" for p in _ALL_PRODUCTS)
 
-    intro = {
-        1: (f"Hi {contact}, this is {SENDER_NAME} from *{SENDER_COMPANY}*, a charcoal exporter "
-            f"based in Lampung, Indonesia. We saw {company} sources "
-            f"{product_interest or 'charcoal'} in {country} and wanted to introduce ourselves."),
-        2: (f"Hi {contact}, following up on my earlier message - still keen to explore a charcoal "
-            f"supply partnership with {company} if the timing works for you."),
-        3: (f"Hi {contact}, last check-in from {SENDER_COMPANY} regarding charcoal supply for "
-            f"{company}. Happy to reconnect anytime in the future if it's not a fit right now."),
-    }[round_number]
+    intro = (
+        f"Hi {contact}, this is {SENDER_NAME} from *{SENDER_COMPANY}*, a charcoal exporter based "
+        f"in Lampung, Indonesia.\n\n"
+        f"We came across your company and understand that you are currently sourcing "
+        f"{product_interest or 'charcoal'} in {country}. We believe our products could be a good "
+        f"fit for your requirements."
+    )
 
     return (
         f"{intro}\n\n"
         f"We can supply:\n{product_lines}\n\n"
-        f"Could you share your preferred specs & estimated order volume? Happy to send our "
-        f"catalogue, pricing, and sample details.\n"
+        f"Our wood charcoal can be supplied according to your requirements, including wood type, "
+        f"lump size, fixed carbon, ash content, moisture, packaging, and order volume.\n\n"
+        f"Why partner with us:\n"
+        f"* Competitive FOB/CIF pricing\n"
+        f"* Consistent export-grade quality\n"
+        f"* Reliable supply from Indonesia\n"
+        f"* Customizable packaging\n"
+        f"* Flexible export and shipping arrangements\n\n"
+        f"Could you please share your preferred charcoal specifications and estimated order "
+        f"volume? I can send you our product specifications, photos, current pricing, and sample "
+        f"arrangement details.\n"
         f"Catalogue: {SENDER_CATALOGUE_URL}\n\n"
-        f"Best,\n{SENDER_NAME} | {SENDER_TITLE}, {SENDER_COMPANY}"
+        f"Best regards,\n{SENDER_NAME} | {SENDER_TITLE}, {SENDER_COMPANY}"
     )
