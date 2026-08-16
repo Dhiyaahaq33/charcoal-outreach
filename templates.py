@@ -60,6 +60,8 @@ def render_email(client_row, round_number):
         3: f"Last Follow-Up – Charcoal Supply for {company}",
     }[round_number]
 
+    phone_lines = "\n".join(f"\U0001F4F1 {p}" for p in SENDER_PHONES)
+
     body = f"""Dear {contact},
 
 My name is {SENDER_NAME}, {SENDER_TITLE} at {SENDER_COMPANY}, a charcoal exporter based in \
@@ -91,7 +93,7 @@ Best regards,
 {SENDER_TITLE}
 {SENDER_COMPANY}
 \U0001F4E7 {SENDER_EMAIL}
-{chr(10).join(f"\U0001F4F1 {p}" for p in SENDER_PHONES)}
+{phone_lines}
 """
     return subject, body
 
