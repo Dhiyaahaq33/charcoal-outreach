@@ -1,8 +1,8 @@
-"""Template WA & Email, disusun dari contoh nyata yang dipakai user (offer ke T And M Kestekides
-Trading, Cyprus). Personalisasi lewat variabel per baris sheet: Company, ContactPerson,
-ProductInterest, Country. Product list dipangkas biar relevan sama ProductInterest klien, bukan
-selalu full list - kalau ProductInterest gak match salah satu produk di bawah, tampilkan full list
-sebagai fallback (aman daripada kosong).
+"""Template WA & Email. Round 1 email disusun PERSIS dari 2 contoh nyata yang dipakai user (offer
+ke T And M Kestekides Trading/Cyprus dan Best Media/Lebanon) - kalimat pembuka & full product list
+gak boleh diubah wordingnya, cuma variabel {ContactPerson}/{ProductInterest}/{Country} yang
+dipersonalisasi. Product list SELALU full 6 item (dikonfirmasi dari contoh Best Media yang Product
+Interest-nya cuma "Wood Charcoal" tapi tetap dikirim full checklist) - bukan dipangkas per klien.
 
 SENDER_* diisi tetap sesuai signature: Muhammad Yahya, COO, PT Cahaya Woodchar International.
 """
@@ -24,12 +24,6 @@ _ALL_PRODUCTS = [
 ]
 
 
-def _relevant_products(product_interest):
-    pi = (product_interest or "").lower()
-    matched = [p for p in _ALL_PRODUCTS if any(kw in pi for kw in p.lower().split(" (")[0].split())]
-    return matched or _ALL_PRODUCTS
-
-
 def _first_name(contact_person):
     name = (contact_person or "").strip()
     return name.split()[0] if name else "there"
@@ -41,11 +35,10 @@ def render_email(client_row, round_number):
     product_interest = client_row.get("Product Interest", "").strip()
     country = client_row.get("Country", "").strip()
 
-    products = _relevant_products(product_interest)
-    product_lines = "\n".join(f"✅ {p}" for p in products)
+    product_lines = "\n".join(f"✅ {p}" for p in _ALL_PRODUCTS)
 
     opening = {
-        1: f"We came across {company} and understand that you are currently sourcing "
+        1: f"We came across your company and understand that you are currently sourcing "
            f"{product_interest or 'charcoal'} in {country}. We believe our products could be a "
            f"good fit for your requirements.",
         2: f"Following up on our previous message - we'd still love the opportunity to supply "
@@ -104,8 +97,7 @@ def render_whatsapp(client_row, round_number):
     product_interest = client_row.get("Product Interest", "").strip()
     country = client_row.get("Country", "").strip()
 
-    products = _relevant_products(product_interest)
-    product_lines = "\n".join(f"✅ {p}" for p in products)
+    product_lines = "\n".join(f"✅ {p}" for p in _ALL_PRODUCTS)
 
     intro = {
         1: (f"Hi {contact}, this is {SENDER_NAME} from *{SENDER_COMPANY}*, a charcoal exporter "
