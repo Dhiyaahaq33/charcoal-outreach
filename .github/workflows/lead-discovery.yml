@@ -1,0 +1,40 @@
+name: Lead Discovery
+
+on:
+  schedule:
+    # 03:00 UTC = 10:00 WIB, sekali sehari - jauh lebih jarang dari outreach (30 menit) karena
+    # Playwright/Maps scraping lebih berat & datanya gak berubah secepat itu.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = preview lead yang ketemu doang (gak nulis ke sheet), false = beneran nambah ke sheet"
+        required: false
+        default: "true"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Run lead discovery
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          # Kosong = skip Google Maps scraping, cuma jalanin web scraper (yang saat ini
+          # keblokir bot-detection di semua sumbernya - lihat discovery/web_scraper.py).
+          GMAPS_LIST_URLS: ${{ secrets.GMAPS_LIST_URLS }}
+          DISCOVERY_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || secrets.DISCOVERY_DRY_RUN }}
+        run: python discovery_main.py
