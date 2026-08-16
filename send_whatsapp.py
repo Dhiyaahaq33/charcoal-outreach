@@ -46,7 +46,7 @@ def send_whatsapp(target_number, message):
         resp = requests.post(
             FONNTE_URL,
             headers={"Authorization": FONNTE_TOKEN},
-            data={"target": target_number, "message": message},
+            data={"target": target_number, "message": message, "preview": "true"},
             timeout=30,
         )
         resp.raise_for_status()
