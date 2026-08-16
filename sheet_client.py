@@ -88,10 +88,13 @@ def load_rows(ws):
 
 def mark_offer_sent(ws, col_index, row_number, round_number, channel, when_iso):
     """Tulis balik: kolom [FIRST/SECOND/THIRD][WHATSAPP/EMAIL] = DONE, LAST_ROUND = round_number,
-    LAST_SENT_AT = when_iso. Nama kolom round di sheet asli pakai header duplikat (WHATSAPP/EMAIL
-    muncul 3x untuk FIRST/SECOND/THIRD) - gspread get_all_records akan collapse nama duplikat, jadi
-    update kolom round pakai offset kolom manual berdasarkan urutan header mentah, bukan lewat dict
-    hasil get_all_records."""
+    LAST_SENT_AT = when_iso. Kalau round_number == 3 (offer terakhir), kolom FINAL (label grup di
+    atasnya "FCBK" - nama kolom asli di header row 2 adalah "FINAL", bukan "FCBK") ikut diisi
+    PENDING, KECUALI udah ada nilai NO/LOST di situ (final negatif gak boleh ke-overwrite jadi
+    PENDING). Nama kolom round di sheet asli pakai header duplikat (WHATSAPP/EMAIL muncul 3x untuk
+    FIRST/SECOND/THIRD) - gspread get_all_records akan collapse nama duplikat, jadi update kolom
+    round pakai offset kolom manual berdasarkan urutan header mentah, bukan lewat dict hasil
+    get_all_records."""
     header = ws.row_values(HEADER_ROW)
     round_offset = {1: 0, 2: 2, 3: 4}[round_number]  # tiap round = 2 kolom (WHATSAPP, EMAIL)
     try:
@@ -105,3 +108,9 @@ def mark_offer_sent(ws, col_index, row_number, round_number, channel, when_iso):
     ws.update_cell(row_number, target_col, "DONE")
     ws.update_cell(row_number, col_index["LAST_ROUND"], round_number)
     ws.update_cell(row_number, col_index["LAST_SENT_AT"], when_iso)
+
+    if round_number == 3 and "FINAL" in header:
+        final_col = header.index("FINAL") + 1
+        current = ws.cell(row_number, final_col).value or ""
+        if current.strip().upper() not in ("NO", "LOST"):
+            ws.update_cell(row_number, final_col, "PENDING")

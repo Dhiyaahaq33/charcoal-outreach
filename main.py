@@ -56,7 +56,9 @@ def _recently_sent(row):
 def process_row(row, col_index, ws):
     company = row.get("Company", "(no name)")
     country = row.get("Country", "")
-    fcbk = str(row.get("FCBK", "")).strip().upper()
+    # Kolom aslinya namanya "FINAL" di header row 2 - "FCBK" cuma label grup yang di-merge di baris
+    # atasnya, bukan nama kolom beneran. Baca "FCBK" di sini bakal selalu kosong (bug lama).
+    fcbk = str(row.get("FINAL", "")).strip().upper()
 
     if fcbk in _FINAL_NEGATIVE:
         return
