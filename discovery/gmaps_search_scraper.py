@@ -133,6 +133,8 @@ def search_and_scrape(combos=None):
         for query, country in combos:
             search_term = f"{query} in {country}"
             search_url = f"https://www.google.com/maps/search/{search_term.replace(' ', '+')}"
+            urls = []
+            country_confident = True
             try:
                 page.goto(_force_en(search_url), wait_until="domcontentloaded", timeout=30000)
                 page.wait_for_selector(RESULT_LINK_SELECTOR, timeout=15000)
@@ -140,9 +142,21 @@ def search_and_scrape(combos=None):
                 links = page.locator(RESULT_LINK_SELECTOR)
                 count = min(links.count(), MAX_RESULTS_PER_COMBO)
                 urls = [links.nth(i).get_attribute("href") for i in range(count)]
-            except Exception as e:
-                logger.warning(f"[gmaps-search] '{search_term}' - no results / blocked: {e}")
-                continue
+            except Exception:
+                # No results FEED found - Maps sometimes redirects straight to a single dominant
+                # place instead of showing a list (happens when one match clearly outranks the
+                # rest, and Maps' local ranking isn't a strict country filter - verified live: a
+                # "in Turkey" query once single-redirected to an Indonesian company). Treat the
+                # current page as the one-and-only result, but DON'T trust the searched-for
+                # country for it - real country detection (phone/address) decides instead.
+                if page.locator("h1.DUwDvf").count():
+                    urls = [page.url]
+                    country_confident = False
+                    logger.info(f"[gmaps-search] '{search_term}' - single dominant place, no "
+                                f"list (country NOT assumed, will detect from phone/address)")
+                else:
+                    logger.warning(f"[gmaps-search] '{search_term}' - no results / blocked")
+                    continue
 
             for url in urls:
                 if not url:
@@ -150,7 +164,8 @@ def search_and_scrape(combos=None):
                 row = _scrape_place(page, url)
                 if row["name"]:
                     row["query"] = search_term
-                    row["country_hint"] = country
+                    if country_confident:
+                        row["country_hint"] = country
                     all_rows.append(row)
                 time.sleep(random.uniform(0.6, 1.2))
 

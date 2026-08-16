@@ -116,26 +116,45 @@ def mark_offer_sent(ws, col_index, row_number, round_number, channel, when_iso):
             ws.update_cell(row_number, final_col, "PENDING")
 
 
+def _col_letter(n):
+    """1-based column count -> A1 column letter (26='Z', 27='AA', ...)."""
+    letters = ""
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        letters = chr(65 + rem) + letters
+    return letters
+
+
 def append_new_leads(ws, leads):
-    """Append newly-discovered leads (from discovery/) as new rows at the end of the sheet.
-    Each lead dict: company, country, role, product_interest, contact_person, phone, whatsapp,
-    email (all optional except company). "No" is auto-incremented from the current max. Only the
-    first 9 columns (No..Email) are filled - everything else (Day/Hour/STATUS/rounds/FINAL/
-    LAST_ROUND/etc) stays blank, computed live by main.py on the next run same as any other row."""
+    """Append newly-discovered leads (from discovery/) as new rows at the end of the sheet, with
+    ONE blank divider row in between (colored red) so scraped batches are visually separated from
+    the original/prior data - each call adds its own divider, so multiple discovery runs stack as
+    distinct red-separated blocks. "No" is auto-incremented from the current max. Only the first 9
+    columns (No..Email) are filled - everything else (Day/Hour/STATUS/rounds/FINAL/LAST_ROUND/etc)
+    stays blank, computed live by main.py on the next run same as any other row.
+
+    Writes via an explicit ws.update() range (not append_rows) - append_rows auto-detects the
+    "first empty row" by cell VALUES, which would land inside the blank divider row itself (empty
+    cells still count as empty even with background color set), destroying the separation."""
     if not leads:
         return 0
 
     header = ws.row_values(HEADER_ROW)
+    ncols = len(header)
     all_values = ws.get_all_values()
+    last_row = len(all_values)
     existing_nos = [
         int(row[0]) for row in all_values[HEADER_ROW:]
         if row and row[0].strip().isdigit()
     ]
     next_no = (max(existing_nos) + 1) if existing_nos else 1
 
-    rows_to_append = []
+    divider_row = last_row + 1
+    data_start_row = divider_row + 1
+
+    rows_to_write = []
     for lead in leads:
-        row = [""] * len(header)
+        row = [""] * ncols
         row[0] = str(next_no)
         row[1] = lead.get("company", "")
         row[2] = lead.get("country", "")
@@ -145,9 +164,18 @@ def append_new_leads(ws, leads):
         row[6] = lead.get("phone", "")
         row[7] = lead.get("whatsapp", "")
         row[8] = lead.get("email", "")
-        rows_to_append.append(row)
+        rows_to_write.append(row)
         next_no += 1
 
-    ws.append_rows(rows_to_append, value_input_option="USER_ENTERED")
-    log.info(f"[sheet] {len(rows_to_append)} lead baru ditambahkan ke CLIENT tab.")
-    return len(rows_to_append)
+    data_end_row = data_start_row + len(rows_to_write) - 1
+    last_col = _col_letter(ncols)
+
+    ws.format(f"A{divider_row}:{last_col}{divider_row}", {
+        "backgroundColor": {"red": 1.0, "green": 0.0, "blue": 0.0}
+    })
+    ws.update(f"A{data_start_row}:{last_col}{data_end_row}", rows_to_write,
+              value_input_option="USER_ENTERED")
+
+    log.info(f"[sheet] {len(rows_to_write)} lead baru ditambahkan ke CLIENT tab "
+             f"(baris {data_start_row}-{data_end_row}, divider merah di baris {divider_row}).")
+    return len(rows_to_write)
