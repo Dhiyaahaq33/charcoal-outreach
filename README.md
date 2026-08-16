@@ -53,12 +53,11 @@ lalu nambah baris baru ke sheet (Company/Country/Contact/Phone/WhatsApp/Email te
 Interest sengaja dikosongkan buat diisi manual).
 
 - **Google Maps search otomatis** (`discovery/gmaps_search_scraper.py`) - **default aktif, gak
-  butuh input apapun.** Search langsung ("charcoal importer in Turkey", dst) ke banyak negara
-  export market x beberapa query buyer-intent, tanpa perlu link list manual. Terverifikasi jalan
-  live (8 perusahaan charcoal UAE ketemu lengkap nama/kategori/alamat/telepon/website di satu
-  test). Cakupan dibatasi 12 kombo query×negara per run, rotasi otomatis berdasarkan
-  tanggal - sapuan penuh (~284 kombo) selesai bertahap lewat banyak run cron harian, bukan
-  sekaligus.
+  butuh input apapun.** Search langsung ("charcoal importer in Turkey", dst) ke **semua ~249
+  negara** (pycountry, cakupan global penuh - bukan cuma pasar known) x beberapa query
+  buyer-intent, tanpa perlu link list manual. Terverifikasi jalan live. Cakupan dibatasi 40 kombo
+  query×negara per run, rotasi otomatis berdasarkan tanggal - sapuan penuh (~996 kombo) selesai
+  bertahap ~25 hari lewat banyak run cron harian, bukan sekaligus.
 - **Google Maps shared list** (`discovery/gmaps_scraper.py`) - opsional, kalau kamu udah punya
   link list spesifik lewat env var `GMAPS_LIST_URLS` (pisah koma), jalan BARENG search otomatis
   di atas (bukan gantiin).
@@ -68,3 +67,11 @@ Interest sengaja dikosongkan buat diisi manual).
   (gagal dengan aman, gak nge-crash run) siapa tahu suatu saat bisa dipakai lagi.
 
 `DISCOVERY_DRY_RUN=true` (default) = preview lead yang ketemu doang, gak nulis ke sheet.
+
+## Rekap harian (tab CORE DATABASE)
+
+Tiap run outreach yang berhasil kirim ≥1 offer, main.py nulis totalnya ke tabel kecil di kolom
+X/Y tab `CORE DATABASE` (area kosong, gak nimpa data existing) - satu baris per tanggal (format
+DD/MM/YYYY, WIB/Asia Jakarta), increment kalau tanggal itu udah ada (banyak run per hari karena
+cron tiap 30 menit), append baris baru kalau ganti hari. Mulai terhitung dari tanggal fitur ini
+diaktifkan, bukan direkonstruksi dari histori lama.
