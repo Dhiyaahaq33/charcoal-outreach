@@ -21,8 +21,10 @@ import re
 import time
 from datetime import date
 
-from country_timezones import COUNTRY_TIMEZONES
+import pycountry
+
 from discovery.gmaps_scraper import _text_or_none, _force_en
+from discovery.dedupe import COUNTRY_NAME_OVERRIDES
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +38,16 @@ BUYER_QUERIES = [
     "shisha charcoal distributor",
 ]
 
-# Countries worth targeting - reuse the same curated list already used for timezone/DO-DONT
-# logic (real export markets that show up in the CLIENT sheet), rather than every country on
-# Earth (most countries have near-zero charcoal import demand - searching them wastes runtime).
-TARGET_COUNTRIES = sorted(COUNTRY_TIMEZONES.keys())
+# TRUE global coverage per user request ("nyari di semua negara bisa termasuk indonesia") -
+# every country pycountry knows about (~249, incl. territories), not just the curated ~71-country
+# list used for existing-client timezone/DO-DONT logic. COUNTRY_NAME_OVERRIDES keeps spelling
+# consistent with the sheet's convention (e.g. "Korea, Republic of" -> "South Korea") so dedup
+# against existing rows still matches correctly.
+TARGET_COUNTRIES = sorted({
+    COUNTRY_NAME_OVERRIDES.get(c.name, c.name) for c in pycountry.countries
+})
 
-MAX_COMBOS_PER_RUN = 12
+MAX_COMBOS_PER_RUN = 40
 MAX_RESULTS_PER_COMBO = 8
 
 
