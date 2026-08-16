@@ -43,3 +43,21 @@ Detail lengkap ada di `DOCUMENTATION.docx`.
 | `templates.py` | isi pesan WA & Email, personalisasi per klien |
 | `send_whatsapp.py` | kirim via Fonnte |
 | `send_email.py` | kirim via Gmail SMTP |
+| `discovery_main.py` + `discovery/` | cari lead baru (scraping), lihat bagian di bawah |
+
+## Lead discovery (cari lead baru)
+
+`discovery_main.py` (workflow `.github/workflows/lead-discovery.yml`, cron harian) scan sumber-sumber
+di bawah, dedup terhadap sheet `CLIENT` yang ada, cari email/kontak dari website lead (kalau ada),
+lalu nambah baris baru ke sheet (Company/Country/Contact/Phone/WhatsApp/Email terisi, Role/Product
+Interest sengaja dikosongkan buat diisi manual).
+
+- **Google Maps shared list** (`discovery/gmaps_scraper.py`) - sumber paling reliable. Butuh link
+  list dari kamu lewat env var `GMAPS_LIST_URLS` (pisah koma) - scraper gak bisa "cari sendiri"
+  tanpa list yang sudah kamu buat & share di Google Maps.
+- **Web scraper** (`discovery/web_scraper.py`) - TradeIndia/ExportHub/Kompass/Google search.
+  **Status saat ini: semua 4 sumber diblokir bot-detection** (CloudFront/Cloudflare/CAPTCHA) dari
+  IP cloud biasa - bukan bug kode, butuh proxy berbayar buat bypass beneran. Tetap ada di kode
+  (gagal dengan aman, gak nge-crash run) siapa tahu suatu saat bisa dipakai lagi.
+
+`DISCOVERY_DRY_RUN=true` (default) = preview lead yang ketemu doang, gak nulis ke sheet.
