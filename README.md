@@ -52,9 +52,16 @@ di bawah, dedup terhadap sheet `CLIENT` yang ada, cari email/kontak dari website
 lalu nambah baris baru ke sheet (Company/Country/Contact/Phone/WhatsApp/Email terisi, Role/Product
 Interest sengaja dikosongkan buat diisi manual).
 
-- **Google Maps shared list** (`discovery/gmaps_scraper.py`) - sumber paling reliable. Butuh link
-  list dari kamu lewat env var `GMAPS_LIST_URLS` (pisah koma) - scraper gak bisa "cari sendiri"
-  tanpa list yang sudah kamu buat & share di Google Maps.
+- **Google Maps search otomatis** (`discovery/gmaps_search_scraper.py`) - **default aktif, gak
+  butuh input apapun.** Search langsung ("charcoal importer in Turkey", dst) ke banyak negara
+  export market x beberapa query buyer-intent, tanpa perlu link list manual. Terverifikasi jalan
+  live (8 perusahaan charcoal UAE ketemu lengkap nama/kategori/alamat/telepon/website di satu
+  test). Cakupan dibatasi 12 kombo query×negara per run, rotasi otomatis berdasarkan
+  tanggal - sapuan penuh (~284 kombo) selesai bertahap lewat banyak run cron harian, bukan
+  sekaligus.
+- **Google Maps shared list** (`discovery/gmaps_scraper.py`) - opsional, kalau kamu udah punya
+  link list spesifik lewat env var `GMAPS_LIST_URLS` (pisah koma), jalan BARENG search otomatis
+  di atas (bukan gantiin).
 - **Web scraper** (`discovery/web_scraper.py`) - TradeIndia/ExportHub/Kompass/Google search.
   **Status saat ini: semua 4 sumber diblokir bot-detection** (CloudFront/Cloudflare/CAPTCHA) dari
   IP cloud biasa - bukan bug kode, butuh proxy berbayar buat bypass beneran. Tetap ada di kode
