@@ -23,6 +23,13 @@ _CONTACT_NAME_RE = re.compile(
     r"\b(?:Mr\.?|Ms\.?|Mrs\.?)\s+([A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+){0,2})"
 )
 _CONTACT_PATHS = ("", "/contact", "/contact-us", "/about", "/about-us")
+# Common false-positive matches for _CONTACT_NAME_RE (business/product words that happen to
+# follow "Mr./Ms." somewhere in page text, e.g. "Ms. Charcoal" from an unrelated nav/heading -
+# not an actual person's name). Reject candidates that are just one of these words.
+_NOT_A_NAME = {
+    "charcoal", "company", "trading", "group", "international", "export", "import",
+    "wholesale", "supplier", "distributor", "products", "quality", "service", "services",
+}
 
 
 def _fetch(url, timeout=10):
@@ -49,7 +56,12 @@ def _extract_emails(html):
 
 def _extract_contact_name(soup_text):
     m = _CONTACT_NAME_RE.search(soup_text)
-    return m.group(1) if m else ""
+    if not m:
+        return ""
+    candidate = m.group(1)
+    if candidate.strip().lower() in _NOT_A_NAME:
+        return ""
+    return candidate
 
 
 def enrich_from_website(website):

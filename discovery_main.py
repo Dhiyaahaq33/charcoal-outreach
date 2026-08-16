@@ -1,6 +1,7 @@
-"""Lead discovery entrypoint - separate from main.py (outreach). Scrapes B2B directories, Google
-search, and (if GMAPS_LIST_URLS is set) Google Maps shared lists, dedupes against the live CLIENT
-sheet, enriches missing email/contact via each lead's website, and appends genuinely new leads.
+"""Lead discovery entrypoint - separate from main.py (outreach). Scrapes B2B directories, an
+autonomous Google Maps search sweep (no list link needed - see discovery/gmaps_search_scraper.py),
+and (if GMAPS_LIST_URLS is set) Google Maps shared lists, dedupes against the live CLIENT sheet,
+enriches missing email/contact via each lead's website, and appends genuinely new leads.
 
 Does NOT send any outreach itself - new rows land with Role/Product Interest blank and get picked
 up by main.py's normal cron cycle once someone fills in enough context (or as-is, since main.py
@@ -22,10 +23,10 @@ log = logging.getLogger(__name__)
 _MAX_ENRICH = 60  # cap website-enrichment HTTP calls per run, keeps runtime/cost bounded
 
 
-def _normalize_gmaps_lead(row):
+def _normalize_gmaps_lead(row, country_hint=None):
     return {
         "company_name": row.get("name") or "",
-        "country": (
+        "country": country_hint or (
             dedupe.country_from_phone(row.get("phone") or "")
             or dedupe.country_from_address(row.get("address") or "")
             or ""
@@ -33,7 +34,7 @@ def _normalize_gmaps_lead(row):
         "phone": row.get("phone") or "",
         "website": row.get("website") or "",
         "email": "",
-        "source": row.get("source_list_url", "gmaps"),
+        "source": row.get("source_list_url") or row.get("query") or "gmaps",
     }
 
 
@@ -42,16 +43,25 @@ def run():
 
     web_leads = web_scraper.scrape_all()
 
-    gmaps_leads = []
+    log.info("[discovery] running autonomous Google Maps search sweep (today's rotation slice)...")
+    from discovery import gmaps_search_scraper
+    raw_search = gmaps_search_scraper.search_and_scrape()
+    search_leads = [
+        _normalize_gmaps_lead(r, country_hint=r.get("country_hint"))
+        for r in raw_search if r.get("name")
+    ]
+
+    gmaps_list_leads = []
     if GMAPS_LIST_URLS:
         log.info(f"[discovery] scraping {len(GMAPS_LIST_URLS)} Google Maps list(s)...")
         from discovery import gmaps_scraper
         raw_gmaps = gmaps_scraper.scrape_lists(GMAPS_LIST_URLS)
-        gmaps_leads = [_normalize_gmaps_lead(r) for r in raw_gmaps if r.get("name")]
+        gmaps_list_leads = [_normalize_gmaps_lead(r) for r in raw_gmaps if r.get("name")]
     else:
-        log.info("[discovery] GMAPS_LIST_URLS kosong, skip Google Maps scraping.")
+        log.info("[discovery] GMAPS_LIST_URLS kosong, skip Google Maps LIST scraping "
+                  "(search sweep di atas jalan tanpa perlu ini).")
 
-    all_leads = dedupe.dedupe_batch(web_leads + gmaps_leads)
+    all_leads = dedupe.dedupe_batch(web_leads + search_leads + gmaps_list_leads)
     log.info(f"[discovery] {len(all_leads)} lead unik setelah dedup dalam batch ini.")
 
     ws = get_worksheet()
