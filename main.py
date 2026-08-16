@@ -19,13 +19,19 @@ kirim & gak nulis ke sheet. Pakai ini dulu buat review sebelum live.
 
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from config import DRY_RUN, MAX_ROUNDS
-from sheet_client import get_worksheet, ensure_extra_columns, load_rows, mark_offer_sent
+from sheet_client import (
+    get_worksheet, ensure_extra_columns, load_rows, mark_offer_sent,
+    get_core_database_worksheet, record_daily_contacts,
+)
 from timezone_rules import is_open_hour_window
 from send_whatsapp import send_whatsapp, extract_number
 from send_email import send_email
 from templates import render_whatsapp, render_email
+
+_WIB = ZoneInfo("Asia/Jakarta")  # WIB = Bogor/Jakarta, UTC+7
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -54,6 +60,8 @@ def _recently_sent(row):
 
 
 def process_row(row, col_index, ws):
+    """Return True kalau berhasil kirim offer beneran (bukan DRY_RUN), buat main() ngitung total
+    client yang dihubungi run ini (dipakai rekap harian CORE DATABASE)."""
     company = row.get("Company", "(no name)")
     country = row.get("Country", "")
     # Kolom aslinya namanya "FINAL" di header row 2 - "FCBK" cuma label grup yang di-merge di baris
@@ -61,20 +69,20 @@ def process_row(row, col_index, ws):
     fcbk = str(row.get("FINAL", "")).strip().upper()
 
     if fcbk in _FINAL_NEGATIVE:
-        return
+        return False
 
     round_number = _last_round(row) + 1
     if round_number > MAX_ROUNDS:
-        return
+        return False
 
     if _recently_sent(row):
         log.info(f"[skip] {company}: baru dikirim < {_RESEND_GUARD}, skip (anti dobel-kirim).")
-        return
+        return False
 
     is_open, detail = is_open_hour_window(country)
     if not is_open:
         log.debug(f"[skip] {company} ({country}): {detail}")
-        return
+        return False
 
     log.info(f"[offer] {company} ({country}) round {round_number} - {detail}")
 
@@ -100,18 +108,19 @@ def process_row(row, col_index, ws):
 
     if not channel_used:
         log.warning(f"[fail] {company}: WhatsApp & Email dua-duanya gagal/gak ada, di-skip run ini.")
-        return
+        return False
 
     if DRY_RUN:
         log.info(f"[DRY_RUN] would update sheet row {row['_row_number']}: round={round_number}, "
                   f"channel={channel_used}")
-        return
+        return False
 
     mark_offer_sent(
         ws, col_index, row["_row_number"], round_number, channel_used,
         datetime.now(timezone.utc).isoformat(),
     )
     log.info(f"[sent] {company}: round {round_number} via {channel_used}, sheet updated.")
+    return True
 
 
 def main():
@@ -121,13 +130,23 @@ def main():
     rows = load_rows(ws)
     log.info(f"{len(rows)} baris dimuat dari sheet.")
 
+    sent_count = 0
     for row in rows:
         try:
-            process_row(row, col_index, ws)
+            if process_row(row, col_index, ws):
+                sent_count += 1
         except Exception as e:
             log.error(f"[error] gagal proses baris {row.get('_row_number')}: {e}")
 
-    log.info("=== Run selesai ===")
+    if sent_count and not DRY_RUN:
+        today_wib = datetime.now(_WIB).strftime("%d/%m/%Y")
+        try:
+            core_ws = get_core_database_worksheet()
+            record_daily_contacts(core_ws, today_wib, sent_count)
+        except Exception as e:
+            log.error(f"[error] gagal update rekap harian CORE DATABASE: {e}")
+
+    log.info(f"=== Run selesai ({sent_count} client dihubungi) ===")
 
 
 if __name__ == "__main__":

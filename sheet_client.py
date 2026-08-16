@@ -42,6 +42,59 @@ def get_worksheet():
     return sh.worksheet(CLIENT_SHEET_TAB)
 
 
+def get_core_database_worksheet():
+    gc = _client()
+    sh = gc.open_by_key(GOOGLE_SHEET_ID)
+    return sh.worksheet("CORE DATABASE")
+
+
+# Rekap harian "client dihubungi" ditaruh di kolom X/Y (24/25) tab CORE DATABASE - kosong di
+# sheet asli (data existing cuma sampai kolom V), jadi aman gak nimpa apa-apa.
+_DAILY_RECAP_COL = 24       # X
+_DAILY_RECAP_HEADER_ROW = 1
+_DAILY_RECAP_DATA_START_ROW = 3
+
+
+def record_daily_contacts(core_ws, date_wib_str, count):
+    """Tambahkan/increment jumlah client yang dihubungi pada tanggal_wib_str (format DD/MM/YYYY,
+    sesuai konvensi tanggal yang udah dipakai di sheet asli) di tabel rekap harian CORE DATABASE.
+    Bikin header tabel dulu kalau belum ada. Satu baris per tanggal - dipanggil sekali per run
+    dengan jumlah client yang berhasil dikontak di run itu, nambah ke count hari itu kalau baris
+    tanggalnya udah ada (run berikutnya di hari yang sama), atau bikin baris baru kalau ganti
+    hari."""
+    if count <= 0:
+        return
+
+    col = _DAILY_RECAP_COL
+    header_cell = core_ws.cell(_DAILY_RECAP_HEADER_ROW, col).value
+    if not header_cell:
+        core_ws.update_cell(_DAILY_RECAP_HEADER_ROW, col, "REKAP HARIAN - CLIENT DIHUBUNGI (WIB)")
+        core_ws.update_cell(_DAILY_RECAP_HEADER_ROW + 1, col, "Tanggal (WIB)")
+        core_ws.update_cell(_DAILY_RECAP_HEADER_ROW + 1, col + 1, "Jumlah Client Dihubungi")
+
+    existing_dates = core_ws.col_values(col)[_DAILY_RECAP_DATA_START_ROW - 1:]
+    row_offset = None
+    for i, val in enumerate(existing_dates):
+        if val.strip() == date_wib_str:
+            row_offset = i
+            break
+
+    if row_offset is not None:
+        row = _DAILY_RECAP_DATA_START_ROW + row_offset
+        current = core_ws.cell(row, col + 1).value or "0"
+        try:
+            current_count = int(current)
+        except ValueError:
+            current_count = 0
+        core_ws.update_cell(row, col + 1, current_count + count)
+    else:
+        row = _DAILY_RECAP_DATA_START_ROW + len(existing_dates)
+        core_ws.update_cell(row, col, date_wib_str)
+        core_ws.update_cell(row, col + 1, count)
+
+    log.info(f"[core-db] rekap harian {date_wib_str}: +{count} client dihubungi.")
+
+
 def ensure_extra_columns(ws):
     """Tambah header LAST_ROUND/LAST_SENT_AT di kolom kosong pertama kalau belum ada. Return dict
     {nama_kolom: index_1based}."""
