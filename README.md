@@ -54,10 +54,12 @@ Interest sengaja dikosongkan buat diisi manual).
 
 - **Google Maps search otomatis** (`discovery/gmaps_search_scraper.py`) - **default aktif, gak
   butuh input apapun.** Search langsung ("charcoal importer in Turkey", dst) ke **semua ~249
-  negara** (pycountry, cakupan global penuh - bukan cuma pasar known) x beberapa query
-  buyer-intent, tanpa perlu link list manual. Terverifikasi jalan live. Cakupan dibatasi 40 kombo
-  query×negara per run, rotasi otomatis berdasarkan tanggal - sapuan penuh (~996 kombo) selesai
-  bertahap ~25 hari lewat banyak run cron harian, bukan sekaligus.
+  negara** (pycountry, cakupan global penuh - bukan cuma pasar known) x **14 keyword** yang
+  disusun dari katalog produk asli (hardwood/coconut/bbq briquette/binchotan) + jenis bisnis
+  end-user (restoran, steakhouse, hotel, catering, shisha lounge) - bukan cuma "trader charcoal"
+  doang. Terverifikasi jalan live. Cakupan dibatasi 60 kombo query×negara per run, rotasi
+  otomatis berdasarkan tanggal - sapuan penuh (~3486 kombo) selesai bertahap ~58 hari lewat
+  banyak run cron harian, bukan sekaligus.
 - **Google Maps shared list** (`discovery/gmaps_scraper.py`) - opsional, kalau kamu udah punya
   link list spesifik lewat env var `GMAPS_LIST_URLS` (pisah koma), jalan BARENG search otomatis
   di atas (bukan gantiin).
