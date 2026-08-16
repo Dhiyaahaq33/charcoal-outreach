@@ -32,10 +32,27 @@ RESULT_LINK_SELECTOR = "a.hfpxzc"
 RESULTS_FEED_SELECTOR = "div[role='feed']"
 
 BUYER_QUERIES = [
+    # Trade/wholesale - generic charcoal buyers/resellers
     "charcoal importer",
     "charcoal wholesaler",
+    "charcoal distributor",
+    # Product-specific - match PT Cahaya Woodchar's actual catalogue (2026 edition: Sawdust,
+    # BBQ Briquette, Coconut Shell, Mix Hardwood, Binchotan, Halaban Wood charcoal)
+    "hardwood charcoal supplier",
+    "coconut charcoal importer",
     "bbq charcoal supplier",
+    "briquette charcoal importer",
+    "binchotan charcoal supplier",
+    # End-use businesses - per user request to go beyond "charcoal traders" and target companies
+    # that consume charcoal for their own operations (catalogue explicitly lists these use cases:
+    # household/commercial/industrial, BBQ, street food, commercial kitchens, shisha, Japanese
+    # grilling, high-end restaurants, steakhouses, catering)
     "shisha charcoal distributor",
+    "restaurant charcoal supplier",
+    "steakhouse charcoal supplier",
+    "hotel charcoal supplier",
+    "catering charcoal supplier",
+    "biomass fuel importer",
 ]
 
 # TRUE global coverage per user request ("nyari di semua negara bisa termasuk indonesia") -
@@ -47,7 +64,7 @@ TARGET_COUNTRIES = sorted({
     COUNTRY_NAME_OVERRIDES.get(c.name, c.name) for c in pycountry.countries
 })
 
-MAX_COMBOS_PER_RUN = 40
+MAX_COMBOS_PER_RUN = 60
 MAX_RESULTS_PER_COMBO = 8
 
 
