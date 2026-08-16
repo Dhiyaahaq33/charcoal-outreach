@@ -170,11 +170,17 @@ def append_new_leads(ws, leads):
     data_end_row = data_start_row + len(rows_to_write) - 1
     last_col = _col_letter(ncols)
 
+    if data_end_row > ws.row_count:
+        ws.add_rows(data_end_row - ws.row_count)
+
     ws.format(f"A{divider_row}:{last_col}{divider_row}", {
         "backgroundColor": {"red": 1.0, "green": 0.0, "blue": 0.0}
     })
-    ws.update(f"A{data_start_row}:{last_col}{data_end_row}", rows_to_write,
-              value_input_option="USER_ENTERED")
+    # RAW, not USER_ENTERED - phone numbers like "0" or "5xx-xxx-xxxx" can get parsed as an
+    # arithmetic expression by Sheets under USER_ENTERED, producing #ERROR! (seen live in
+    # testing). Every field here is plain text/digits, never a formula, so RAW is correct.
+    ws.update(range_name=f"A{data_start_row}:{last_col}{data_end_row}", values=rows_to_write,
+              value_input_option="RAW")
 
     log.info(f"[sheet] {len(rows_to_write)} lead baru ditambahkan ke CLIENT tab "
              f"(baris {data_start_row}-{data_end_row}, divider merah di baris {divider_row}).")
