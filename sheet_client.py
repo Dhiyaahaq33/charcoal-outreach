@@ -55,14 +55,15 @@ _DAILY_RECAP_HEADER_ROW = 1
 _DAILY_RECAP_DATA_START_ROW = 3
 
 
-def record_daily_contacts(core_ws, date_wib_str, count):
+def record_daily_contacts(core_ws, date_wib_str, whatsapp_count=0, email_count=0):
     """Tambahkan/increment jumlah client yang dihubungi pada tanggal_wib_str (format DD/MM/YYYY,
-    sesuai konvensi tanggal yang udah dipakai di sheet asli) di tabel rekap harian CORE DATABASE.
-    Bikin header tabel dulu kalau belum ada. Satu baris per tanggal - dipanggil sekali per run
-    dengan jumlah client yang berhasil dikontak di run itu, nambah ke count hari itu kalau baris
-    tanggalnya udah ada (run berikutnya di hari yang sama), atau bikin baris baru kalau ganti
-    hari."""
-    if count <= 0:
+    sesuai konvensi tanggal yang udah dipakai di sheet asli) di tabel rekap harian CORE DATABASE,
+    dipecah per channel (WhatsApp/Email) plus kolom Total. Bikin header tabel dulu kalau belum
+    ada. Satu baris per tanggal - dipanggil sekali per run dengan jumlah client yang berhasil
+    dikontak di run itu (per channel), nambah ke angka hari itu kalau baris tanggalnya udah ada
+    (run berikutnya di hari yang sama), atau bikin baris baru kalau ganti hari."""
+    total = whatsapp_count + email_count
+    if total <= 0:
         return
 
     col = _DAILY_RECAP_COL
@@ -70,7 +71,9 @@ def record_daily_contacts(core_ws, date_wib_str, count):
     if not header_cell:
         core_ws.update_cell(_DAILY_RECAP_HEADER_ROW, col, "REKAP HARIAN - CLIENT DIHUBUNGI (WIB)")
         core_ws.update_cell(_DAILY_RECAP_HEADER_ROW + 1, col, "Tanggal (WIB)")
-        core_ws.update_cell(_DAILY_RECAP_HEADER_ROW + 1, col + 1, "Jumlah Client Dihubungi")
+        core_ws.update_cell(_DAILY_RECAP_HEADER_ROW + 1, col + 1, "Total")
+        core_ws.update_cell(_DAILY_RECAP_HEADER_ROW + 1, col + 2, "WhatsApp")
+        core_ws.update_cell(_DAILY_RECAP_HEADER_ROW + 1, col + 3, "Email")
 
     existing_dates = core_ws.col_values(col)[_DAILY_RECAP_DATA_START_ROW - 1:]
     row_offset = None
@@ -79,20 +82,29 @@ def record_daily_contacts(core_ws, date_wib_str, count):
             row_offset = i
             break
 
+    def _int_or_zero(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
+
     if row_offset is not None:
         row = _DAILY_RECAP_DATA_START_ROW + row_offset
-        current = core_ws.cell(row, col + 1).value or "0"
-        try:
-            current_count = int(current)
-        except ValueError:
-            current_count = 0
-        core_ws.update_cell(row, col + 1, current_count + count)
+        cur_total = _int_or_zero(core_ws.cell(row, col + 1).value)
+        cur_wa = _int_or_zero(core_ws.cell(row, col + 2).value)
+        cur_email = _int_or_zero(core_ws.cell(row, col + 3).value)
+        core_ws.update_cell(row, col + 1, cur_total + total)
+        core_ws.update_cell(row, col + 2, cur_wa + whatsapp_count)
+        core_ws.update_cell(row, col + 3, cur_email + email_count)
     else:
         row = _DAILY_RECAP_DATA_START_ROW + len(existing_dates)
         core_ws.update_cell(row, col, date_wib_str)
-        core_ws.update_cell(row, col + 1, count)
+        core_ws.update_cell(row, col + 1, total)
+        core_ws.update_cell(row, col + 2, whatsapp_count)
+        core_ws.update_cell(row, col + 3, email_count)
 
-    log.info(f"[core-db] rekap harian {date_wib_str}: +{count} client dihubungi.")
+    log.info(f"[core-db] rekap harian {date_wib_str}: +{total} client dihubungi "
+             f"(WA:+{whatsapp_count} Email:+{email_count}).")
 
 
 def ensure_extra_columns(ws):
