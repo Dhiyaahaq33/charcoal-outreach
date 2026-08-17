@@ -73,7 +73,8 @@ Interest sengaja dikosongkan buat diisi manual).
 ## Rekap harian (tab CORE DATABASE)
 
 Tiap run outreach yang berhasil kirim ≥1 offer, main.py nulis totalnya ke tabel kecil di kolom
-X/Y tab `CORE DATABASE` (area kosong, gak nimpa data existing) - satu baris per tanggal (format
-DD/MM/YYYY, WIB/Asia Jakarta), increment kalau tanggal itu udah ada (banyak run per hari karena
-cron tiap 30 menit), append baris baru kalau ganti hari. Mulai terhitung dari tanggal fitur ini
+X-AA tab `CORE DATABASE` (area kosong, gak nimpa data existing) - satu baris per tanggal (format
+DD/MM/YYYY, WIB/Asia Jakarta), dengan breakdown **Total / WhatsApp / Email** terpisah, increment
+kalau tanggal itu udah ada (banyak run per hari karena cron tiap 30 menit), append baris baru
+kalau ganti hari. Mulai terhitung dari tanggal fitur ini
 diaktifkan, bukan direkonstruksi dari histori lama.
