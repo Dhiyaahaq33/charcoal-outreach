@@ -16,6 +16,7 @@ import logging
 from config import GMAPS_LIST_URLS, DISCOVERY_DRY_RUN
 from sheet_client import get_worksheet, ensure_extra_columns, load_rows, append_new_leads
 from discovery import web_scraper, dedupe, enrichment
+from discovery.relevance import classify_relevance
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ def _normalize_gmaps_lead(row, country_hint=None):
         # Per user request: kolom Product Interest diisi alasan singkat kenapa company ini dipilih
         # masuk database, bukan dikosongin.
         "product_interest": _match_reason(row.get("category") or "", row.get("query") or ""),
+        "category": row.get("category") or "",
         "email": "",
         "source": row.get("source_list_url") or row.get("query") or "gmaps",
     }
@@ -99,6 +101,24 @@ def run():
         if dedupe.is_new_lead(lead, existing_names, existing_phones)
     ]
     log.info(f"[discovery] {len(new_leads)} lead genuinely baru (belum ada di CLIENT sheet).")
+
+    # Filter relevansi ke katalog charcoal SEBELUM masuk sheet sama sekali - per user request
+    # setelah nemu lead yang jelas gak nyambung (toko kosmetik) ikut ke-scrape masuk database.
+    # Ambigu (kategori kosong/gak match keyword mana pun) tetap diloloskan (fail-open) - mending
+    # nyangkut lead yang gak yakin daripada salah buang lead yang sebenernya relevan.
+    relevant_leads = []
+    dropped = 0
+    for lead in new_leads:
+        is_relevant, bad_kw = classify_relevance(lead.get("category", ""), lead.get("company_name", ""))
+        if is_relevant:
+            relevant_leads.append(lead)
+        else:
+            dropped += 1
+            log.info(f"[discovery] skip (gak relevan, terdeteksi \"{bad_kw}\"): "
+                     f"{lead.get('company_name', '')}")
+    if dropped:
+        log.info(f"[discovery] {dropped} lead di-skip karena kategorinya gak nyambung ke produk charcoal.")
+    new_leads = relevant_leads
 
     # Per user request: usahakan tiap lead punya email DAN phone, bukan email doang - kalau
     # salah satu masih kosong, tetap coba enrich (need_email/need_phone nentuin apa yang dicari).

@@ -1,20 +1,26 @@
-"""Re-scrape Google Maps satu-per-satu buat ngisi Contact Person (link Maps) untuk lead hasil
-scraping LAMA yang kolomnya masih kosong - per user request setelah ketauan versi kode lama
-gak nyimpen maps_url begitu company punya website sendiri (jadi link Maps aslinya beneran hilang,
-gak ada di sheet mana pun). "klo ga kesimpen maka di scraping lagi dan taro di sel itu masing2
-sesuai profil" - jadi ini bukan sweep kategori kayak gmaps_search_scraper.py, tapi LOOKUP
-per-company: cari "{Company} {Country}" di Google Maps, ambil link profil hasil pertama yang
-paling relevan, tulis ke Contact Person baris itu.
+"""Re-scrape Google Maps satu-per-satu buat ngisi Contact Person (link Maps) DAN Product Interest
+(alasan match + cek relevansi) untuk lead hasil scraping LAMA yang kolomnya masih kosong - per
+user request setelah ketauan versi kode lama gak nyimpen maps_url/kategori sama sekali begitu
+company punya website sendiri (datanya beneran hilang, gak ada di sheet mana pun buat direkonstruksi
+tanpa scraping ulang).
+
+User juga eksplisit minta dicek relevansinya: "pastikan nnti lu pas offer mereka semua yg di sheet
+itu nyambung dari product kita ke company mereka, soalnya tdi gw liat ada company yg jualan
+kosmetik" - jadi selain isi 2 kolom itu, tiap kategori Maps yang ketemu dicocokin ke daftar
+kata kunci relevan/gak relevan buat produk charcoal (BBQ, shisha, restoran, wholesale/trading,
+dll vs kosmetik, fashion, elektronik, dll). Kalau JELAS gak relevan, kolom FINAL diisi "NO" biar
+main.py otomatis skip company itu dari outreach selamanya (_FINAL_NEGATIVE check yang udah ada) -
+gak perlu nunggu review manual dulu buat berhentiin kontak ke lead yang jelas salah sasaran.
+Kalau ambigu (kategori gak match daftar mana pun), FAIL-OPEN - tetap dianggap boleh di-offer,
+biar gak salah skip lead yang sebenarnya relevan tapi kategorinya gak lazim.
 
 Sengaja CUMA nyentuh baris setelah ORIGINAL_DATA_END_ROW (>673) - 671 client awal itu data
-kurasi manual, kolom Contact Person-nya beneran nama orang kontak asli, BUKAN slot buat link Maps
-(konvensi link-Maps-di-Contact-Person cuma berlaku buat lead hasil scraping, bukan data asli).
+kurasi manual, kolom Contact Person-nya beneran nama orang kontak asli, BUKAN slot buat link Maps.
 
-Playwright per-lookup lambat (~3-6 detik/company: search + tunggu render + verifikasi place page),
-jadi dibatasi MAX_PER_RUN per eksekusi biar runtime CI kebentuk & gak digeber ke Google Maps
-sekaligus (risiko blokir). Idempotent: baris yang Contact Person-nya udah keisi otomatis
-kelewatan run berikutnya, jadi cukup dijadwalin ulang beberapa kali buat nyelesain semua baris
-secara bertahap (pola sama kayak gmaps_search_scraper.py punya).
+Playwright per-lookup lambat (search + kunjungi place page buat ambil kategori = 2 navigasi/
+company), jadi dibatasi MAX_PER_RUN per eksekusi. Idempotent: baris yang Product Interest DAN
+Contact Person udah dua-duanya keisi otomatis kelewatan run berikutnya, jadi cukup dijadwalin
+ulang beberapa kali buat nyelesain semua baris secara bertahap.
 
 Run manual: python scripts/enrich_maps_links.py
 Via workflow_dispatch/schedule: .github/workflows/enrich-maps-links.yml
@@ -29,18 +35,18 @@ sys.path.insert(0, ".")
 from sheet_client import get_worksheet, load_rows, HEADER_ROW, ORIGINAL_DATA_END_ROW, _col_letter
 from discovery.gmaps_scraper import _text_or_none, _force_en
 from discovery.gmaps_search_scraper import RESULT_LINK_SELECTOR
+from discovery.relevance import classify_relevance
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-MAX_PER_RUN = 120
+MAX_PER_RUN = 80
 
 
 def _find_maps_profile(page, company, country):
     """Cari 1 company spesifik di Maps, return link profilnya (atau None kalau gak ketemu/gak
-    yakin). Sama pola dual-path-nya gmaps_search_scraper.search_and_scrape(): Maps kadang nampilin
-    list hasil (ambil yang PALING ATAS - hasil paling relevan buat nama company spesifik kayak
-    gini), kadang langsung redirect ke satu tempat dominan (dipercaya langsung)."""
+    yakin). Maps kadang nampilin list hasil (ambil yang PALING ATAS), kadang langsung redirect ke
+    satu tempat dominan (dipercaya HANYA kalau page.url beneran jadi /maps/place/...)."""
     query = f"{company} {country}".strip() if country else company
     search_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
     try:
@@ -60,11 +66,6 @@ def _find_maps_profile(page, company, country):
     except Exception:
         pass
 
-    # Gak ada list hasil - Maps mungkin langsung redirect ke satu tempat dominan. TAPI cuma
-    # dipercaya kalau page.url beneran berubah jadi URL profil ("/maps/place/...") - kalau masih
-    # persis URL pencarian yang kita buka sendiri (search_url), berarti Maps GAK nemu apa-apa dan
-    # h1.DUwDvf kebetulan match elemen lain di halaman kosong itu (false positive kejadian nyata:
-    # nulis balik query pencarian sebagai "link ketemu" ke 30-an baris di run pertama).
     try:
         if "/maps/place/" in page.url:
             return page.url
@@ -73,21 +74,32 @@ def _find_maps_profile(page, company, country):
     return None
 
 
+def _visit_and_get_category(page, maps_url):
+    try:
+        page.goto(_force_en(maps_url), wait_until="domcontentloaded", timeout=20000)
+        page.wait_for_selector("h1.DUwDvf", timeout=12000)
+    except Exception:
+        return None
+    return _text_or_none(page, "button.DkEaL")
+
+
 def run():
     ws = get_worksheet()
     header = ws.row_values(HEADER_ROW)
     last_col = _col_letter(len(header))
     contact_col = header.index("Contact Person") + 1
+    product_col = header.index("Product Interest") + 1
+    final_col = header.index("FINAL") + 1 if "FINAL" in header else None
 
     rows = load_rows(ws)
     candidates = [
         r for r in rows
         if r["_row_number"] > ORIGINAL_DATA_END_ROW
         and r.get("Company", "").strip()
-        and not r.get("Contact Person", "").strip()
+        and (not r.get("Contact Person", "").strip() or not r.get("Product Interest", "").strip())
     ]
-    log.info(f"[enrich-maps] {len(candidates)} baris kandidat (Contact Person kosong), "
-             f"proses maks {MAX_PER_RUN} run ini.")
+    log.info(f"[enrich-maps] {len(candidates)} baris kandidat (Contact Person dan/atau Product "
+             f"Interest kosong), proses maks {MAX_PER_RUN} run ini.")
     candidates = candidates[:MAX_PER_RUN]
     if not candidates:
         log.info("[enrich-maps] gak ada baris yang perlu diproses.")
@@ -96,7 +108,10 @@ def run():
     from playwright.sync_api import sync_playwright
 
     updates = []
-    found = 0
+    contact_found = 0
+    product_found = 0
+    flagged_irrelevant = 0
+
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         context = browser.new_context(
@@ -110,14 +125,42 @@ def run():
         for r in candidates:
             company = r.get("Company", "").strip()
             country = r.get("Country", "").strip()
-            maps_url = _find_maps_profile(page, company, country)
-            if maps_url:
-                updates.append({"range": f"{_col_letter(contact_col)}{r['_row_number']}",
-                                 "values": [[maps_url]]})
-                found += 1
-                log.info(f"[enrich-maps] {company} ({country}) -> {maps_url}")
-            else:
-                log.info(f"[enrich-maps] {company} ({country}) -> gak ketemu, skip.")
+            existing_contact = r.get("Contact Person", "").strip()
+            need_product = not r.get("Product Interest", "").strip()
+
+            maps_url = existing_contact if "/maps/place/" in existing_contact else None
+            if not maps_url:
+                maps_url = _find_maps_profile(page, company, country)
+                if maps_url and "/maps/place/" in maps_url:
+                    updates.append({"range": f"{_col_letter(contact_col)}{r['_row_number']}",
+                                     "values": [[maps_url]]})
+                    contact_found += 1
+
+            category = None
+            if need_product and maps_url and "/maps/place/" in maps_url:
+                category = _visit_and_get_category(page, maps_url)
+
+            if need_product:
+                if category:
+                    relevant, bad_kw = classify_relevance(category, company)
+                    if relevant:
+                        reason = f'Kategori Maps: "{category}" (di-verifikasi ulang via Maps).'
+                    else:
+                        reason = (f'Kategori Maps: "{category}" - KEMUNGKINAN GAK RELEVAN sama '
+                                  f'produk charcoal (terdeteksi "{bad_kw}"), FINAL di-set NO.')
+                        if final_col:
+                            updates.append({"range": f"{_col_letter(final_col)}{r['_row_number']}",
+                                             "values": [["NO"]]})
+                            flagged_irrelevant += 1
+                    updates.append({"range": f"{_col_letter(product_col)}{r['_row_number']}",
+                                     "values": [[reason]]})
+                    product_found += 1
+                    log.info(f"[enrich-maps] {company} ({country}) -> kategori: \"{category}\""
+                             f"{' [DITANDAI NO]' if not relevant else ''}")
+                else:
+                    log.info(f"[enrich-maps] {company} ({country}) -> kategori gak kebaca, "
+                             f"Product Interest dilewatin run ini.")
+
             time.sleep(random.uniform(0.8, 1.6))
 
         browser.close()
@@ -128,7 +171,9 @@ def run():
             if i + 100 < len(updates):
                 time.sleep(2)
 
-    log.info(f"[enrich-maps] selesai - {found}/{len(candidates)} link Maps ketemu & ditulis.")
+    log.info(f"[enrich-maps] selesai - {contact_found} Contact Person baru, {product_found} "
+             f"Product Interest baru ({flagged_irrelevant} ditandai FINAL=NO karena gak relevan), "
+             f"dari {len(candidates)} baris diproses.")
 
 
 if __name__ == "__main__":
