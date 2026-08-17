@@ -43,3 +43,8 @@ OPEN_HOUR_END = 17    # 17:00 waktu lokal client
 # anti-dobel-kirim guard (itu cuma buat run yang tumpang tindih) - ini soal cadence follow-up B2B
 # yang wajar, biar gak keliatan spam ke calon buyer.
 MIN_DAYS_BETWEEN_ROUNDS = 7
+
+# Batas email/hari (WIB) - dijaga jauh di bawah limit resmi Gmail (500/hari) sekaligus ngurangin
+# frekuensi login SMTP harian, biar konsisten aman gak kena rate-limit lagi kayak yang kejadian
+# 17 Aug 2026 (kirim 400+ email sehari langsung kena "too many login attempts").
+MAX_EMAILS_PER_DAY = 200

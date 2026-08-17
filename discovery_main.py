@@ -33,6 +33,10 @@ def _normalize_gmaps_lead(row, country_hint=None):
         ),
         "phone": row.get("phone") or "",
         "website": row.get("website") or "",
+        # Link Google Maps tempat itu - dipakai sebagai fallback kolom Website kalau lead ini
+        # gak punya website sendiri (banyak listing Maps gak ada website tapi tetap punya link
+        # profil Maps-nya - lebih baik daripada kolom Website kosong sama sekali).
+        "maps_url": row.get("maps_url") or "",
         "email": "",
         "source": row.get("source_list_url") or row.get("query") or "gmaps",
     }
@@ -65,7 +69,7 @@ def run():
     log.info(f"[discovery] {len(all_leads)} lead unik setelah dedup dalam batch ini.")
 
     ws = get_worksheet()
-    ensure_extra_columns(ws)
+    col_index = ensure_extra_columns(ws)
     sheet_rows = load_rows(ws)
     existing_names, existing_phones = dedupe.existing_keys(sheet_rows)
 
@@ -101,6 +105,7 @@ def run():
         "phone": lead.get("phone", ""),
         "whatsapp": dedupe.to_whatsapp(lead.get("phone", "")) if lead.get("phone") else "",
         "email": lead.get("email", ""),
+        "website": lead.get("website", "") or lead.get("maps_url", ""),
     } for lead in new_leads if lead.get("company_name")]
 
     with_email = sum(1 for lead in to_append if lead["email"])
@@ -112,7 +117,7 @@ def run():
         if len(to_append) > 20:
             log.info(f"  ... and {len(to_append) - 20} more")
     else:
-        added = append_new_leads(ws, to_append)
+        added = append_new_leads(ws, col_index, to_append)
         log.info(f"[discovery] {added} baris baru ditambahkan ke sheet ({with_email} dengan email terisi).")
     log.info("=== Lead discovery run selesai ===")
 

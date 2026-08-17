@@ -12,8 +12,10 @@ Alur per baris di sheet CLIENT:
   5. Skip kalau round berikutnya (2 atau 3) belum MIN_DAYS_BETWEEN_ROUNDS hari (default 7) sejak
      round sebelumnya - follow-up cadence B2B wajar, bukan spam ke calon buyer yang sama di hari
      yang sama.
-  6. round = LAST_ROUND + 1. Coba WhatsApp dulu (Fonnte); kalau gagal/nomor gak ada, fallback Email
-     (Gmail SMTP). Kalau dua-duanya gagal, di-skip (gak update sheet, dicoba lagi run berikutnya).
+  6. round = LAST_ROUND + 1. Coba WhatsApp dulu (Fonnte, kecuali WHATSAPP_ENABLED=false); kalau
+     gagal/nomor gak ada, fallback Email (Gmail SMTP) - kecuali budget MAX_EMAILS_PER_DAY (200)
+     hari ini udah abis, dicoba lagi besok. Kalau dua-duanya gagal, di-skip (gak update sheet,
+     dicoba lagi run berikutnya).
   7. Tulis balik ke sheet: kolom [round][channel]=DONE, LAST_ROUND, LAST_SENT_AT.
 
 DRY_RUN=true (default) -> hitung semua, log apa yang MAU dikirim ke siapa, tapi gak benar-benar
@@ -24,10 +26,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from config import DRY_RUN, MAX_ROUNDS, MIN_DAYS_BETWEEN_ROUNDS, WHATSAPP_ENABLED
+from config import DRY_RUN, MAX_ROUNDS, MIN_DAYS_BETWEEN_ROUNDS, WHATSAPP_ENABLED, MAX_EMAILS_PER_DAY
 from sheet_client import (
     get_worksheet, ensure_extra_columns, load_rows, mark_offer_sent,
-    get_core_database_worksheet, record_daily_contacts,
+    get_core_database_worksheet, record_daily_contacts, get_daily_email_count,
 )
 from timezone_rules import is_open_hour_window
 from send_whatsapp import send_whatsapp, extract_number
@@ -80,7 +82,7 @@ def _too_soon_for_next_round(row, round_number):
     return datetime.now(timezone.utc) - sent_at < timedelta(days=MIN_DAYS_BETWEEN_ROUNDS)
 
 
-def process_row(row, col_index, ws, smtp_server):
+def process_row(row, col_index, ws, smtp_server, email_budget):
     """Return "whatsapp"/"email" kalau berhasil kirim offer beneran (bukan DRY_RUN), None kalau
     skip/gagal - dipakai main() buat ngitung total client dihubungi run ini per channel (rekap
     harian CORE DATABASE)."""
@@ -126,12 +128,17 @@ def process_row(row, col_index, ws, smtp_server):
             channel_used = "whatsapp"
 
     if not channel_used and email:
-        subject, body = render_email(row, round_number)
-        if DRY_RUN:
-            log.info(f"[DRY_RUN] would send Email to {email} | subject={subject}\n{body}\n")
-            channel_used = "email"
-        elif send_email(smtp_server, email, subject, body):
-            channel_used = "email"
+        if not DRY_RUN and email_budget["remaining"] <= 0:
+            log.debug(f"[skip] {company}: budget MAX_EMAILS_PER_DAY ({MAX_EMAILS_PER_DAY}) "
+                      f"hari ini abis, coba lagi besok.")
+        else:
+            subject, body = render_email(row, round_number)
+            if DRY_RUN:
+                log.info(f"[DRY_RUN] would send Email to {email} | subject={subject}\n{body}\n")
+                channel_used = "email"
+            elif send_email(smtp_server, email, subject, body):
+                channel_used = "email"
+                email_budget["remaining"] -= 1
 
     if not channel_used:
         log.warning(f"[fail] {company}: WhatsApp & Email dua-duanya gagal/gak ada, di-skip run ini.")
@@ -157,17 +164,30 @@ def main():
     rows = load_rows(ws)
     log.info(f"{len(rows)} baris dimuat dari sheet.")
 
+    # Budget MAX_EMAILS_PER_DAY dihitung dari rekap harian yang UDAH ada (bisa udah kepakai
+    # sebagian dari run-run sebelumnya hari ini, cron jalan tiap 30 menit) - bukan reset per run.
+    already_sent_today = 0
+    if not DRY_RUN:
+        try:
+            today_wib_for_budget = datetime.now(_WIB).strftime("%d/%m/%Y")
+            already_sent_today = get_daily_email_count(get_core_database_worksheet(), today_wib_for_budget)
+        except Exception as e:
+            log.error(f"[error] gagal baca rekap harian buat budget email: {e}")
+    email_budget = {"remaining": max(0, MAX_EMAILS_PER_DAY - already_sent_today)}
+    log.info(f"[budget] email hari ini: {already_sent_today}/{MAX_EMAILS_PER_DAY} udah kepakai, "
+             f"sisa {email_budget['remaining']}.")
+
     # Satu sesi SMTP dipakai ulang buat semua email run ini, bukan connect+login per email -
     # itu yang bikin Gmail nge-rate-limit login ("454 Too many login attempts") setelah ratusan
-    # email dalam sehari. Gak dibuka sama sekali kalau DRY_RUN (gak ada yang beneran dikirim).
-    smtp_server = None if DRY_RUN else open_smtp_session()
+    # email dalam sehari. Gak dibuka sama sekali kalau DRY_RUN atau budget udah abis.
+    smtp_server = None if (DRY_RUN or email_budget["remaining"] <= 0) else open_smtp_session()
 
     wa_count = 0
     email_count = 0
     try:
         for row in rows:
             try:
-                channel = process_row(row, col_index, ws, smtp_server)
+                channel = process_row(row, col_index, ws, smtp_server, email_budget)
                 if channel == "whatsapp":
                     wa_count += 1
                 elif channel == "email":

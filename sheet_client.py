@@ -16,7 +16,7 @@ _SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
 ]
 
-EXTRA_COLUMNS = ["LAST_ROUND", "LAST_SENT_AT"]
+EXTRA_COLUMNS = ["LAST_ROUND", "LAST_SENT_AT", "Website"]
 
 # Sheet asli punya 2 baris header: baris 1 = label grup yang di-merge (mis. "[merged] FIRST"),
 # baris 2 = header kolom asli ("No, Company, Country, ..."). Semua kode di sini harus baca/tulis
@@ -53,6 +53,23 @@ def get_core_database_worksheet():
 _DAILY_RECAP_COL = 24       # X
 _DAILY_RECAP_HEADER_ROW = 1
 _DAILY_RECAP_DATA_START_ROW = 3
+
+
+def get_daily_email_count(core_ws, date_wib_str):
+    """Baca ulang berapa email yang UDAH sukses terkirim hari ini (dari tabel rekap harian) - buat
+    main.py ngitung sisa budget MAX_EMAILS_PER_DAY sebelum mulai run. Return 0 kalau belum ada
+    baris buat tanggal itu (hari pertama / tabel belum pernah dibuat)."""
+    col = _DAILY_RECAP_COL
+    existing_dates = core_ws.col_values(col)[_DAILY_RECAP_DATA_START_ROW - 1:]
+    for i, val in enumerate(existing_dates):
+        if val.strip() == date_wib_str:
+            row = _DAILY_RECAP_DATA_START_ROW + i
+            raw = core_ws.cell(row, col + 3).value  # kolom Email
+            try:
+                return int(raw)
+            except (TypeError, ValueError):
+                return 0
+    return 0
 
 
 def record_daily_contacts(core_ws, date_wib_str, whatsapp_count=0, email_count=0):
@@ -190,32 +207,43 @@ def _col_letter(n):
     return letters
 
 
-def append_new_leads(ws, leads):
-    """Append newly-discovered leads (from discovery/) as new rows at the end of the sheet, with
-    ONE blank divider row in between (colored red) so scraped batches are visually separated from
-    the original/prior data - each call adds its own divider, so multiple discovery runs stack as
-    distinct red-separated blocks. "No" is auto-incremented from the current max. Only the first 9
-    columns (No..Email) are filled - everything else (Day/Hour/STATUS/rounds/FINAL/LAST_ROUND/etc)
-    stays blank, computed live by main.py on the next run same as any other row.
+# Baris terakhir dataset asli (671 klien awal, No 1-671, dikonfirmasi manual 17 Aug 2026) - baris
+# TETAP, gak akan berubah, jadi di-hardcode BUKAN dideteksi dinamis. Sempat coba deteksi otomatis
+# (cari run >=10 baris kosong berturut-turut) tapi itu SALAH begitu data scraping udah nempel
+# langsung setelah data asli (cuma 1 baris pemisah, bukan >=10) - heuristiknya malah nyasar nemu
+# ujung BAWAH blok scraping sebagai "akhir data asli", bikin batch berikutnya nyisip di tengah
+# blok scraping yang udah ada alih-alih tepat setelah data asli. Ketauan lewat test insersi live.
+ORIGINAL_DATA_END_ROW = 673
 
-    Writes via an explicit ws.update() range (not append_rows) - append_rows auto-detects the
-    "first empty row" by cell VALUES, which would land inside the blank divider row itself (empty
-    cells still count as empty even with background color set), destroying the separation."""
+
+def append_new_leads(ws, col_index, leads):
+    """Sisipkan lead baru (dari discovery/) tepat SETELAH dataset asli (bukan di ujung bawah
+    sheet), dengan SATU baris pemisah kosong (dicat merah) sebelum data - tiap panggilan nyisip
+    batch barunya di posisi yang sama (tepat setelah data asli), jadi batch terbaru selalu nempel
+    di atas batch-batch sebelumnya, semuanya tetap tepat setelah data asli sebagai satu blok.
+    "No" auto-increment dari nilai max saat ini (di seluruh sheet, bukan cuma dataset asli).
+
+    col_index: hasil ensure_extra_columns(ws), buat tau posisi kolom LAST_ROUND/LAST_SENT_AT/
+    Website. Kolom Website diisi website asli lead (kalau ketemu) atau link Google Maps-nya
+    sebagai fallback - biar setiap lead scraping selalu punya link buat verifikasi manual.
+
+    Pakai ws.insert_rows() (bulk, geser baris di bawahnya turun otomatis) - BUKAN per-cell
+    update_cell() - biar gak kena Sheets API write-rate limit (kejadian nyata waktu develop:
+    429 Quota exceeded setelah puluhan update_cell() beruntun)."""
     if not leads:
         return 0
 
     header = ws.row_values(HEADER_ROW)
     ncols = len(header)
+    website_col_idx = col_index.get("Website")  # 1-based, None kalau kolom belum ada
+
     all_values = ws.get_all_values()
-    last_row = len(all_values)
+    original_end = ORIGINAL_DATA_END_ROW
     existing_nos = [
         int(row[0]) for row in all_values[HEADER_ROW:]
         if row and row[0].strip().isdigit()
     ]
     next_no = (max(existing_nos) + 1) if existing_nos else 1
-
-    divider_row = last_row + 1
-    data_start_row = divider_row + 1
 
     rows_to_write = []
     for lead in leads:
@@ -229,24 +257,28 @@ def append_new_leads(ws, leads):
         row[6] = lead.get("phone", "")
         row[7] = lead.get("whatsapp", "")
         row[8] = lead.get("email", "")
+        if website_col_idx:
+            website = lead.get("website") or lead.get("maps_url") or ""
+            row[website_col_idx - 1] = website
         rows_to_write.append(row)
         next_no += 1
 
-    data_end_row = data_start_row + len(rows_to_write) - 1
-    last_col = _col_letter(ncols)
+    divider_row = original_end + 1
+    insert_block = [[""] * ncols] + rows_to_write
 
-    if data_end_row > ws.row_count:
-        ws.add_rows(data_end_row - ws.row_count)
+    if divider_row + len(insert_block) > ws.row_count:
+        ws.add_rows(divider_row + len(insert_block) - ws.row_count)
 
-    ws.format(f"A{divider_row}:{last_col}{divider_row}", {
-        "backgroundColor": {"red": 1.0, "green": 0.0, "blue": 0.0}
-    })
     # RAW, not USER_ENTERED - phone numbers like "0" or "5xx-xxx-xxxx" can get parsed as an
     # arithmetic expression by Sheets under USER_ENTERED, producing #ERROR! (seen live in
     # testing). Every field here is plain text/digits, never a formula, so RAW is correct.
-    ws.update(range_name=f"A{data_start_row}:{last_col}{data_end_row}", values=rows_to_write,
-              value_input_option="RAW")
+    ws.insert_rows(insert_block, divider_row, value_input_option="RAW")
 
-    log.info(f"[sheet] {len(rows_to_write)} lead baru ditambahkan ke CLIENT tab "
-             f"(baris {data_start_row}-{data_end_row}, divider merah di baris {divider_row}).")
+    last_col = _col_letter(ncols)
+    ws.format(f"A{divider_row}:{last_col}{divider_row}", {
+        "backgroundColor": {"red": 1.0, "green": 0.0, "blue": 0.0}
+    })
+
+    log.info(f"[sheet] {len(rows_to_write)} lead baru disisipkan ke CLIENT tab tepat setelah "
+             f"data asli (mulai baris {divider_row + 1}, divider merah di baris {divider_row}).")
     return len(rows_to_write)
