@@ -124,6 +124,68 @@ def record_daily_contacts(core_ws, date_wib_str, whatsapp_count=0, email_count=0
              f"(WA:+{whatsapp_count} Email:+{email_count}).")
 
 
+# Kolom AD (30) tab CORE DATABASE - jarak sengaja dari tabel rekap harian (X-AA / 24-27) biar gak
+# numpuk. Baris 1 = label, baris 2 = quota WA aktif saat ini (di-consume main.py tiap kirim
+# sukses, di-set/direset lewat command Telegram - telegram_bot.py), baris 3 = update_id terakhir
+# dari Telegram getUpdates yang udah diproses (biar polling gak proses ulang pesan lama - GitHub
+# Actions gak punya disk persisten antar run, jadi state ini HARUS disimpan di sheet).
+_WA_QUOTA_COL = 30
+_WA_QUOTA_LABEL_ROW = 1
+_WA_QUOTA_VALUE_ROW = 2
+_TELEGRAM_OFFSET_ROW = 3
+
+
+def get_wa_quota(core_ws):
+    """Sisa quota kirim WA yang masih boleh dikirim - default 0 (standby) kalau belum pernah
+    di-set. WA main.py gak akan kirim apa pun kalau ini 0, walau WHATSAPP_ENABLED=true."""
+    raw = core_ws.cell(_WA_QUOTA_VALUE_ROW, _WA_QUOTA_COL).value
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
+def set_wa_quota(core_ws, n):
+    """Set (bukan tambah) quota kirim WA - dipanggil telegram_bot.py waktu user kasih command
+    'kirim wa ke N klien'. Bikin label kolom dulu kalau baris 1 masih kosong (pertama kali)."""
+    n = max(0, int(n))
+    if not core_ws.cell(_WA_QUOTA_LABEL_ROW, _WA_QUOTA_COL).value:
+        core_ws.update_cell(_WA_QUOTA_LABEL_ROW, _WA_QUOTA_COL, "WA SEND QUOTA (command Telegram)")
+    core_ws.update_cell(_WA_QUOTA_VALUE_ROW, _WA_QUOTA_COL, n)
+    return n
+
+
+def get_telegram_offset(core_ws):
+    raw = core_ws.cell(_TELEGRAM_OFFSET_ROW, _WA_QUOTA_COL).value
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def set_telegram_offset(core_ws, update_id):
+    core_ws.update_cell(_TELEGRAM_OFFSET_ROW, _WA_QUOTA_COL, int(update_id))
+
+
+def mark_row_unreachable(ws, row_number):
+    """Tandai baris yang beneran gak ada kontak yang bisa dihubungi sama sekali (nomor WA-capable
+    maupun email) - dicat HITAM penuh (teks putih biar kebaca) + kolom FINAL diisi LOST (arti
+    aslinya di sheet: kontak client itu memang gak ada sama sekali). Reuse FINAL=LOST biar run
+    berikutnya otomatis skip baris ini lewat _FINAL_NEGATIVE check yang udah ada di main.py, gak
+    perlu state terpisah buat 'udah pernah ditandai dead-end'."""
+    header = ws.row_values(HEADER_ROW)
+    ncols = len(header)
+    last_col = _col_letter(ncols)
+    ws.format(f"A{row_number}:{last_col}{row_number}", {
+        "backgroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0},
+        "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}},
+    })
+    if "FINAL" in header:
+        final_col = header.index("FINAL") + 1
+        ws.update_cell(row_number, final_col, "LOST")
+    log.info(f"[sheet] baris {row_number}: gak ada kontak sama sekali, ditandai hitam & FINAL=LOST.")
+
+
 def ensure_extra_columns(ws):
     """Tambah header LAST_ROUND/LAST_SENT_AT di kolom kosong pertama kalau belum ada. Return dict
     {nama_kolom: index_1based}."""

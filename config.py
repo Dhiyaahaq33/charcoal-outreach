@@ -48,3 +48,11 @@ MIN_DAYS_BETWEEN_ROUNDS = 7
 # frekuensi login SMTP harian, biar konsisten aman gak kena rate-limit lagi kayak yang kejadian
 # 17 Aug 2026 (kirim 400+ email sehari langsung kena "too many login attempts").
 MAX_EMAILS_PER_DAY = 200
+
+# Bot Telegram (telegram_bot.py) buat kontrol kirim WhatsApp via command (mis. "kirim wa ke 50
+# klien") - per user request pasca insiden WA banned 17 Aug 2026, WA gak boleh auto-kirim lagi,
+# harus standby sampai ada command eksplisit. Bikin bot: chat @BotFather di Telegram > /newbot.
+# TELEGRAM_CHAT_ID: chat id user (BUKAN username) - didapat dari getUpdates setelah kirim pesan
+# pertama ke bot, atau dari bot semacam @userinfobot.
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()

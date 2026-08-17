@@ -23,7 +23,22 @@ log = logging.getLogger(__name__)
 _MAX_ENRICH = 60  # cap website-enrichment HTTP calls per run, keeps runtime/cost bounded
 
 
+def _match_reason(category, query):
+    """Alasan singkat kenapa company ini masuk database - per user request setelah nemu beberapa
+    lead scraping yang namanya keliatan gak ada korelasi sama produk sama sekali ("ada beberapa
+    company dari namanya seperti ga ada korelasi dengan produk kita sama sekali"). Ditulis dari
+    kategori Google Maps tempat itu + query pencarian yang nemuinnya, biar user bisa langsung cek
+    manual relevansinya tanpa buka Maps dulu."""
+    bits = []
+    if category:
+        bits.append(f"kategori Maps: \"{category}\"")
+    if query:
+        bits.append(f"ditemukan lewat pencarian \"{query}\"")
+    return " - ".join(bits) or "ditemukan via pencarian Google Maps (kategori tidak terbaca)"
+
+
 def _normalize_gmaps_lead(row, country_hint=None):
+    maps_url = row.get("maps_url") or ""
     return {
         "company_name": row.get("name") or "",
         "country": country_hint or (
@@ -36,7 +51,13 @@ def _normalize_gmaps_lead(row, country_hint=None):
         # Link Google Maps tempat itu - dipakai sebagai fallback kolom Website kalau lead ini
         # gak punya website sendiri (banyak listing Maps gak ada website tapi tetap punya link
         # profil Maps-nya - lebih baik daripada kolom Website kosong sama sekali).
-        "maps_url": row.get("maps_url") or "",
+        "maps_url": maps_url,
+        # Per user request: kolom Contact Person diisi link Maps company-nya (bukan tebakan nama
+        # orang, yang seringnya kosong/gak akurat dari enrichment website).
+        "contact_person": maps_url,
+        # Per user request: kolom Product Interest diisi alasan singkat kenapa company ini dipilih
+        # masuk database, bukan dikosongin.
+        "product_interest": _match_reason(row.get("category") or "", row.get("query") or ""),
         "email": "",
         "source": row.get("source_list_url") or row.get("query") or "gmaps",
     }
@@ -98,6 +119,9 @@ def run():
             lead["email"] = result["email"]
         if result["phone"] and not lead.get("phone"):
             lead["phone"] = result["phone"]
+        # Maps leads udah punya contact_person = link Maps (lihat _normalize_gmaps_lead) - jangan
+        # ditimpa tebakan nama dari enrichment. Cuma lead non-Maps (web_scraper, gak punya
+        # maps_url) yang boleh kepake nama hasil enrichment di sini.
         if result["contact_person"] and not lead.get("contact_person"):
             lead["contact_person"] = result["contact_person"]
     log.info(f"[discovery] {enrich_count} website di-enrich buat cari email/kontak.")
@@ -106,7 +130,7 @@ def run():
         "company": lead.get("company_name", ""),
         "country": lead.get("country", ""),
         "role": "",
-        "product_interest": "",
+        "product_interest": lead.get("product_interest", ""),
         "contact_person": lead.get("contact_person", ""),
         "phone": lead.get("phone", ""),
         "whatsapp": dedupe.to_whatsapp(lead.get("phone", "")) if lead.get("phone") else "",
