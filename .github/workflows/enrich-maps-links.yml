@@ -1,0 +1,32 @@
+name: Enrich Maps Links (Contact Person)
+
+on:
+  schedule:
+    # Offset 15 menit dari outreach.yml/lead-discovery.yml (yang jalan di :00/:30) biar gak
+    # numpuk runner bareng - re-scrape Maps satu-per-satu ini jalan bertahap, gak perlu instan.
+    - cron: "15,45 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Enrich Contact Person with Maps links
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          PYTHONUNBUFFERED: "1"
+        run: python -u scripts/enrich_maps_links.py
