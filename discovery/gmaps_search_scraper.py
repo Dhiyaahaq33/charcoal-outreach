@@ -64,12 +64,73 @@ TARGET_COUNTRIES = sorted({
     COUNTRY_NAME_OVERRIDES.get(c.name, c.name) for c in pycountry.countries
 })
 
+# Istilah lokal "arang/charcoal" per negara - banyak bisnis di Google Maps cuma punya kategori/
+# nama dalam bahasa lokal, gak pernah diterjemahin ke Inggris, jadi query BUYER_QUERIES (semua
+# Inggris) bisa kelewat mereka. Dipakai sebagai query BERDIRI SENDIRI per negara (bukan
+# dikombinasi ulang dengan 14 keyword Inggris - istilah lokalnya udah cukup spesifik sendiri),
+# nambah ke _all_combos() di bawah. Cuma negara-negara yang bahasanya jelas dominan & charcoal
+# trade-nya relevan yang dicover - belum lengkap semua 249 negara, tapi jauh lebih baik daripada
+# Inggris doang.
+LOCAL_TERMS = {
+    "Turkey": ["mangal kömürü", "odun kömürü"],
+    "Saudi Arabia": ["تاجر فحم", "فحم"],
+    "United Arab Emirates": ["تاجر فحم", "فحم"],
+    "Kuwait": ["فحم"],
+    "Qatar": ["فحم"],
+    "Bahrain": ["فحم"],
+    "Oman": ["فحم"],
+    "Iraq": ["فحم"],
+    "Jordan": ["فحم"],
+    "Lebanon": ["فحم"],
+    "Egypt": ["فحم"],
+    "Palestine": ["فحم"],
+    "Syria": ["فحم"],
+    "Morocco": ["فحم"],
+    "Algeria": ["فحم"],
+    "Tunisia": ["فحم"],
+    "Libya": ["فحم"],
+    "France": ["charbon de bois"],
+    "Belgium": ["charbon de bois"],
+    "Switzerland": ["charbon de bois", "Holzkohle"],
+    "Spain": ["carbón vegetal"],
+    "Mexico": ["carbón vegetal"],
+    "Argentina": ["carbón vegetal"],
+    "Chile": ["carbón vegetal"],
+    "Colombia": ["carbón vegetal"],
+    "Peru": ["carbón vegetal"],
+    "Brazil": ["carvão vegetal"],
+    "Portugal": ["carvão vegetal"],
+    "Angola": ["carvão vegetal"],
+    "Mozambique": ["carvão vegetal"],
+    "Germany": ["Holzkohle"],
+    "Austria": ["Holzkohle"],
+    "Indonesia": ["arang kayu", "arang briket"],
+    "Malaysia": ["arang kayu"],
+    "China": ["木炭"],
+    "Taiwan": ["木炭"],
+    "Japan": ["木炭"],
+    "South Korea": ["숯"],
+    "Russia": ["древесный уголь"],
+    "Ukraine": ["деревне вугілля"],
+    "Thailand": ["ถ่าน"],
+    "Viet Nam": ["than củi"],
+    "Vietnam": ["than củi"],
+    "Italy": ["carbonella", "carbone di legna"],
+    "Netherlands": ["houtskool"],
+    "India": ["कोयला"],
+    "Pakistan": ["کوئلہ"],
+    "Bangladesh": ["কাঠকয়লা"],
+    "Iran": ["زغال چوب"],
+}
+
 MAX_COMBOS_PER_RUN = 60
 MAX_RESULTS_PER_COMBO = 8
 
 
 def _all_combos():
-    return [(q, c) for q in BUYER_QUERIES for c in TARGET_COUNTRIES]
+    english = [(q, c) for q in BUYER_QUERIES for c in TARGET_COUNTRIES]
+    local = [(term, country) for country, terms in LOCAL_TERMS.items() for term in terms]
+    return english + local
 
 
 def _todays_combos():
