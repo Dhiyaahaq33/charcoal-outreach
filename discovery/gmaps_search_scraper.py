@@ -19,7 +19,7 @@ import logging
 import random
 import re
 import time
-from datetime import date
+from datetime import datetime, timezone
 
 import pycountry
 
@@ -53,6 +53,7 @@ BUYER_QUERIES = [
     "hotel charcoal supplier",
     "catering charcoal supplier",
     "biomass fuel importer",
+    "BBQ equipment supplier",
 ]
 
 # TRUE global coverage per user request ("nyari di semua negara bisa termasuk indonesia") -
@@ -134,11 +135,18 @@ def _all_combos():
 
 
 def _todays_combos():
-    """Deterministic daily rotation - same day always picks the same slice, so re-running
-    discovery_main.py manually the same day doesn't skip ahead or repeat work unpredictably."""
+    """Deterministic rotation by 30-minute UTC slot (matches the cron cadence) - each run picks a
+    genuinely different slice, so the full sweep actually progresses every run instead of
+    re-scraping the same combos all day. Was keyed by date-only originally, which meant every run
+    within the same day picked the IDENTICAL slice - harmless at 1 run/day, but once cron moved to
+    every 30 min (per user request "terus menerus cari tanpa henti", enabled by the repo going
+    public for unlimited Actions minutes) that would've wasted every run after the first re-doing
+    zero new coverage. Manually re-running within the same 30-min slot still returns the same
+    slice (deterministic, avoids skipping/duplicating work unpredictably), same guarantee as
+    before just at finer granularity."""
     combos = _all_combos()
-    day_index = date.today().toordinal()
-    start = (day_index * MAX_COMBOS_PER_RUN) % len(combos)
+    slot_index = int(datetime.now(timezone.utc).timestamp() // 1800)  # 1800s = 30 menit
+    start = (slot_index * MAX_COMBOS_PER_RUN) % len(combos)
     end = start + MAX_COMBOS_PER_RUN
     if end <= len(combos):
         return combos[start:end]

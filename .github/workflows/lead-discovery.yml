@@ -2,9 +2,11 @@ name: Lead Discovery
 
 on:
   schedule:
-    # 03:00 UTC = 10:00 WIB, sekali sehari - jauh lebih jarang dari outreach (30 menit) karena
-    # Playwright/Maps scraping lebih berat & datanya gak berubah secepat itu.
-    - cron: "0 3 * * *"
+    # Tiap 30 menit, sama kayak outreach - per user request "terus menerus cari tanpa henti".
+    # Cuma bisa jalan senyaman ini karena repo udah public (Actions minutes unlimited gratis) -
+    # dulu 1x/hari doang waktu masih private (budget 2000 menit/bulan gampang abis kalau sesering
+    # ini, apalagi digabung sama outreach bot yang juga tiap 30 menit).
+    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
