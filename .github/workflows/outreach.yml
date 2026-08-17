@@ -34,6 +34,9 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          # false = skip WA sepenuhnya, semua lewat Email - dipakai waktu device Fonnte kena
+          # disconnect berulang gara-gara WhatsApp mendeteksi pengiriman otomatis massal.
+          WHATSAPP_ENABLED: ${{ secrets.WHATSAPP_ENABLED }}
           # Manual run (workflow_dispatch) pakai input dry_run. Cron terjadwal SELALU pakai secret
           # DRY_RUN kamu di GitHub Secrets - set ke "false" di sana kalau udah siap live.
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || secrets.DRY_RUN }}

@@ -24,7 +24,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from config import DRY_RUN, MAX_ROUNDS, MIN_DAYS_BETWEEN_ROUNDS
+from config import DRY_RUN, MAX_ROUNDS, MIN_DAYS_BETWEEN_ROUNDS, WHATSAPP_ENABLED
 from sheet_client import (
     get_worksheet, ensure_extra_columns, load_rows, mark_offer_sent,
     get_core_database_worksheet, record_daily_contacts,
@@ -117,7 +117,7 @@ def process_row(row, col_index, ws):
     email = row.get("Email", "").strip()
 
     channel_used = None
-    if number:
+    if number and WHATSAPP_ENABLED:
         message = render_whatsapp(row, round_number)
         if DRY_RUN:
             log.info(f"[DRY_RUN] would send WhatsApp to {number}:\n{message}\n")

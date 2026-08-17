@@ -9,6 +9,12 @@ load_dotenv()
 
 FONNTE_TOKEN = os.environ.get("FONNTE_TOKEN", "").strip()
 
+# Matiin channel WhatsApp sepenuhnya (semua kirim langsung ke Email, gak coba WA sama sekali) -
+# dipakai waktu device Fonnte kena disconnect berulang gara-gara WhatsApp mendeteksi pengiriman
+# otomatis massal dari satu nomor dan maksa logout linked device sebagai proteksi anti-spam
+# mereka. Biar gak nambah percobaan koneksi yang bisa makin memperparah status nomornya.
+WHATSAPP_ENABLED = os.environ.get("WHATSAPP_ENABLED", "true").strip().lower() in ("1", "true", "yes")
+
 GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS", "").strip()
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").strip()
 
