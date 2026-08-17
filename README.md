@@ -11,9 +11,11 @@ Tiap 30 menit, bot:
 2. Hitung jam lokal tiap negara klien (bukan pakai kolom manual di sheet) - kirim hanya kalau
    **Senin-Jumat, jam 09:00-17:00 waktu lokal klien**.
 3. Skip klien yang `FCBK` = `LOST` atau `NO`, atau yang sudah kena 3x offer (`LAST_ROUND` = 3).
-4. Kirim **WhatsApp dulu** (via Fonnte) - kalau nomor tidak ada/gagal, **fallback ke Email** (Gmail
+4. Skip kalau round berikutnya belum **7 hari** (`MIN_DAYS_BETWEEN_ROUNDS`) sejak round terakhir -
+   round 1 selalu boleh langsung, round 2/3 nunggu jarak wajar, bukan spam di hari yang sama.
+5. Kirim **WhatsApp dulu** (via Fonnte) - kalau nomor tidak ada/gagal, **fallback ke Email** (Gmail
    SMTP).
-5. Tulis balik ke sheet: kolom offer round terkait = `DONE`, plus `LAST_ROUND` dan `LAST_SENT_AT`.
+6. Tulis balik ke sheet: kolom offer round terkait = `DONE`, plus `LAST_ROUND` dan `LAST_SENT_AT`.
 
 Detail lengkap ada di `DOCUMENTATION.docx`.
 
