@@ -60,9 +60,13 @@ def _find_maps_profile(page, company, country):
     except Exception:
         pass
 
-    # Gak ada list hasil - Maps mungkin langsung redirect ke satu tempat dominan.
+    # Gak ada list hasil - Maps mungkin langsung redirect ke satu tempat dominan. TAPI cuma
+    # dipercaya kalau page.url beneran berubah jadi URL profil ("/maps/place/...") - kalau masih
+    # persis URL pencarian yang kita buka sendiri (search_url), berarti Maps GAK nemu apa-apa dan
+    # h1.DUwDvf kebetulan match elemen lain di halaman kosong itu (false positive kejadian nyata:
+    # nulis balik query pencarian sebagai "link ketemu" ke 30-an baris di run pertama).
     try:
-        if page.locator("h1.DUwDvf").count():
+        if "/maps/place/" in page.url:
             return page.url
     except Exception:
         pass
