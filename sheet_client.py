@@ -360,9 +360,25 @@ def append_new_leads(ws, col_index, leads):
     # RAW, not USER_ENTERED - phone numbers like "0" or "5xx-xxx-xxxx" can get parsed as an
     # arithmetic expression by Sheets under USER_ENTERED, producing #ERROR! (seen live in
     # testing). Every field here is plain text/digits, never a formula, so RAW is correct.
-    ws.insert_rows(insert_block, divider_row, value_input_option="RAW")
+    #
+    # inherit_from_before=True - gspread's DEFAULT (False) inherits formatting from whatever
+    # currently sits at `divider_row` (the row being pushed down), which is ALWAYS the previous
+    # run's red divider row (every batch inserts at this exact same fixed position). That made
+    # every new batch's rows come in ALREADY red, cascading worse with every 30-min discovery run
+    # (confirmed live: rows A675+ ended up almost entirely red after ~a day of runs). Inheriting
+    # from BEFORE instead (the last row of stable data above the insertion point) avoids that.
+    ws.insert_rows(insert_block, divider_row, value_input_option="RAW", inherit_from_before=True)
 
     last_col = _col_letter(ncols)
+    # Defensive belt-and-suspenders on top of inherit_from_before=True above: explicitly clear
+    # background on the freshly-inserted DATA rows (not the divider) so a leftover red/black
+    # format from some other row can never bleed through regardless of inherit behavior.
+    data_start = divider_row + 1
+    data_end = divider_row + len(rows_to_write)
+    ws.format(f"A{data_start}:{last_col}{data_end}", {
+        "backgroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
+        "textFormat": {"foregroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0}},
+    })
     ws.format(f"A{divider_row}:{last_col}{divider_row}", {
         "backgroundColor": {"red": 1.0, "green": 0.0, "blue": 0.0}
     })
