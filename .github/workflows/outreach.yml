@@ -37,7 +37,8 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python telegram_bot.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u telegram_bot.py
         continue-on-error: true
 
       - name: Run outreach bot

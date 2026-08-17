@@ -75,18 +75,21 @@ def _parse_command(text):
 
 
 def run():
+    log.info("[telegram] listener mulai jalan.")
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         log.info("[telegram] TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID kosong, skip (belum dikonfigurasi).")
         return
 
     core_ws = get_core_database_worksheet()
     last_offset = get_telegram_offset(core_ws)
+    log.info(f"[telegram] offset terakhir: {last_offset}")
 
     try:
         updates = _get_updates(last_offset)
-    except Exception as e:
-        log.error(f"[telegram] gagal ambil updates: {e}")
+    except Exception:
+        log.exception("[telegram] gagal ambil updates")
         return
+    log.info(f"[telegram] {len(updates)} update ditemukan dari Telegram.")
 
     if not updates:
         log.info("[telegram] gak ada pesan baru.")
@@ -140,4 +143,8 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    try:
+        run()
+    except Exception:
+        log.exception("[telegram] listener crash gak ketangkep di run()")
+        raise
