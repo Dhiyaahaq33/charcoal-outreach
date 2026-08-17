@@ -79,19 +79,25 @@ def run():
     ]
     log.info(f"[discovery] {len(new_leads)} lead genuinely baru (belum ada di CLIENT sheet).")
 
+    # Per user request: usahakan tiap lead punya email DAN phone, bukan email doang - kalau
+    # salah satu masih kosong, tetap coba enrich (need_email/need_phone nentuin apa yang dicari).
     enrich_count = 0
     for lead in new_leads:
         if enrich_count >= _MAX_ENRICH:
             break
-        if lead.get("email"):
+        need_email = not lead.get("email")
+        need_phone = not lead.get("phone")
+        if not need_email and not need_phone:
             continue
-        website = lead.get("website", "")
+        website = lead.get("website", "") or lead.get("maps_url", "")
         if not website:
             continue
-        result = enrichment.enrich_from_website(website)
+        result = enrichment.enrich_from_website(website, need_email=need_email, need_phone=need_phone)
         enrich_count += 1
         if result["email"]:
             lead["email"] = result["email"]
+        if result["phone"] and not lead.get("phone"):
+            lead["phone"] = result["phone"]
         if result["contact_person"] and not lead.get("contact_person"):
             lead["contact_person"] = result["contact_person"]
     log.info(f"[discovery] {enrich_count} website di-enrich buat cari email/kontak.")
