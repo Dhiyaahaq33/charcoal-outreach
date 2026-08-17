@@ -9,9 +9,12 @@ Alur per baris di sheet CLIENT:
      dihitung ulang tiap run, bukan bergantung kolom DAY/HOUR manual di sheet).
   4. Skip kalau baris ini udah dikirim < 20 menit lalu (guard anti dobel-kirim kalau run tumpang
      tindih - LAST_SENT_AT).
-  5. round = LAST_ROUND + 1. Coba WhatsApp dulu (Fonnte); kalau gagal/nomor gak ada, fallback Email
+  5. Skip kalau round berikutnya (2 atau 3) belum MIN_DAYS_BETWEEN_ROUNDS hari (default 7) sejak
+     round sebelumnya - follow-up cadence B2B wajar, bukan spam ke calon buyer yang sama di hari
+     yang sama.
+  6. round = LAST_ROUND + 1. Coba WhatsApp dulu (Fonnte); kalau gagal/nomor gak ada, fallback Email
      (Gmail SMTP). Kalau dua-duanya gagal, di-skip (gak update sheet, dicoba lagi run berikutnya).
-  6. Tulis balik ke sheet: kolom [round][channel]=DONE, LAST_ROUND, LAST_SENT_AT.
+  7. Tulis balik ke sheet: kolom [round][channel]=DONE, LAST_ROUND, LAST_SENT_AT.
 
 DRY_RUN=true (default) -> hitung semua, log apa yang MAU dikirim ke siapa, tapi gak benar-benar
 kirim & gak nulis ke sheet. Pakai ini dulu buat review sebelum live.
@@ -21,7 +24,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from config import DRY_RUN, MAX_ROUNDS
+from config import DRY_RUN, MAX_ROUNDS, MIN_DAYS_BETWEEN_ROUNDS
 from sheet_client import (
     get_worksheet, ensure_extra_columns, load_rows, mark_offer_sent,
     get_core_database_worksheet, record_daily_contacts,
@@ -59,6 +62,24 @@ def _recently_sent(row):
     return datetime.now(timezone.utc) - sent_at < _RESEND_GUARD
 
 
+def _too_soon_for_next_round(row, round_number):
+    """Round 2/3 harus nunggu minimal MIN_DAYS_BETWEEN_ROUNDS hari sejak LAST_SENT_AT - beda
+    dari _recently_sent() (guard 20 menit anti run tumpang tindih). Round 1 selalu boleh langsung
+    (belum ada round sebelumnya buat dibandingin). Baris lama hasil backfill yang gak punya
+    LAST_SENT_AT (histori manual sebelum bot ada) gak diblokir - gak ada data buat tau kapan
+    terakhir dikontak, jadi dianggap aman lanjut daripada nge-block permanen."""
+    if round_number <= 1:
+        return False
+    raw = row.get("LAST_SENT_AT")
+    if not raw:
+        return False
+    try:
+        sent_at = datetime.fromisoformat(raw)
+    except ValueError:
+        return False
+    return datetime.now(timezone.utc) - sent_at < timedelta(days=MIN_DAYS_BETWEEN_ROUNDS)
+
+
 def process_row(row, col_index, ws):
     """Return "whatsapp"/"email" kalau berhasil kirim offer beneran (bukan DRY_RUN), None kalau
     skip/gagal - dipakai main() buat ngitung total client dihubungi run ini per channel (rekap
@@ -78,6 +99,11 @@ def process_row(row, col_index, ws):
 
     if _recently_sent(row):
         log.info(f"[skip] {company}: baru dikirim < {_RESEND_GUARD}, skip (anti dobel-kirim).")
+        return None
+
+    if _too_soon_for_next_round(row, round_number):
+        log.debug(f"[skip] {company}: round {round_number} belum {MIN_DAYS_BETWEEN_ROUNDS} hari "
+                  f"sejak round terakhir dikirim.")
         return None
 
     is_open, detail = is_open_hour_window(country)

@@ -32,3 +32,8 @@ DISCOVERY_DRY_RUN = os.environ.get("DISCOVERY_DRY_RUN", "true").strip().lower() 
 MAX_ROUNDS = 3
 OPEN_HOUR_START = 9   # 09:00 waktu lokal client
 OPEN_HOUR_END = 17    # 17:00 waktu lokal client
+
+# Jarak minimum antara round follow-up ke client yang sama (round 1->2, 2->3). BUKAN 20-menit
+# anti-dobel-kirim guard (itu cuma buat run yang tumpang tindih) - ini soal cadence follow-up B2B
+# yang wajar, biar gak keliatan spam ke calon buyer.
+MIN_DAYS_BETWEEN_ROUNDS = 7
