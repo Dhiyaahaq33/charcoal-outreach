@@ -15,7 +15,9 @@ Tiap 30 menit, bot:
    round 1 selalu boleh langsung, round 2/3 nunggu jarak wajar, bukan spam di hari yang sama.
 5. Kirim **WhatsApp dulu** (via Fonnte, kecuali `WHATSAPP_ENABLED=false`) - kalau nomor tidak ada/
    gagal, **fallback ke Email** (Gmail SMTP, satu sesi login dipakai ulang buat semua email dalam
-   satu run - bukan connect+login per email, biar gak kena rate-limit Gmail).
+   satu run - bukan connect+login per email, biar gak kena rate-limit Gmail). Email dibatasi
+   **`MAX_EMAILS_PER_DAY` (200/hari, WIB)** - budget dihitung dari rekap harian, sisa hari itu
+   ditunda ke besok kalau abis.
 6. Tulis balik ke sheet: kolom offer round terkait = `DONE`, plus `LAST_ROUND` dan `LAST_SENT_AT`.
 
 Detail lengkap ada di `DOCUMENTATION.docx`.
@@ -52,8 +54,10 @@ Detail lengkap ada di `DOCUMENTATION.docx`.
 
 `discovery_main.py` (workflow `.github/workflows/lead-discovery.yml`, cron harian) scan sumber-sumber
 di bawah, dedup terhadap sheet `CLIENT` yang ada, cari email/kontak dari website lead (kalau ada),
-lalu nambah baris baru ke sheet (Company/Country/Contact/Phone/WhatsApp/Email terisi, Role/Product
-Interest sengaja dikosongkan buat diisi manual).
+lalu **nyisip baris baru tepat setelah dataset asli** (baris 674, bukan numpuk di ujung bawah
+sheet - lihat `ORIGINAL_DATA_END_ROW` di sheet_client.py) dengan satu baris pemisah merah.
+Company/Country/Contact/Phone/WhatsApp/Email/**Website** (link resmi lead, atau link Google Maps
+kalau gak ada website) terisi; Role/Product Interest sengaja dikosongkan buat diisi manual.
 
 - **Google Maps search otomatis** (`discovery/gmaps_search_scraper.py`) - **default aktif, gak
   butuh input apapun.** Search langsung ("charcoal importer in Turkey", dst) ke **semua ~249
