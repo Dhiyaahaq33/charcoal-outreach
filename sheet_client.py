@@ -216,6 +216,32 @@ def _col_letter(n):
 ORIGINAL_DATA_END_ROW = 673
 
 
+def _resync_no_column(ws):
+    """Renumber kolom "No" berurutan (1,2,3,...) buat semua baris yang punya Company, dalam urutan
+    baris fisik - dipanggil otomatis tiap kali append_new_leads() nyisip batch baru, karena
+    ws.insert_rows() geser baris di bawahnya turun tapi NILAI No lama ikut kebawa apa adanya (jadi
+    ada gap besar kalau gak di-resync). Baris kosong (divider/template) dilewatin."""
+    all_values = ws.get_all_values()
+    batch = []
+    counter = 0
+    for i, row in enumerate(all_values[HEADER_ROW:], start=HEADER_ROW + 1):
+        has_company = len(row) > 1 and row[1].strip() != ""
+        if not has_company:
+            continue
+        counter += 1
+        if row[0].strip() != str(counter):
+            batch.append({"range": f"A{i}", "values": [[counter]]})
+
+    if not batch:
+        return
+    import time
+    for i in range(0, len(batch), 100):
+        ws.batch_update(batch[i:i + 100], value_input_option="RAW")
+        if i + 100 < len(batch):
+            time.sleep(2)
+    log.info(f"[sheet] kolom No di-resync ({len(batch)} baris diperbarui).")
+
+
 def append_new_leads(ws, col_index, leads):
     """Sisipkan lead baru (dari discovery/) tepat SETELAH dataset asli (bukan di ujung bawah
     sheet), dengan SATU baris pemisah kosong (dicat merah) sebelum data - tiap panggilan nyisip
@@ -281,4 +307,6 @@ def append_new_leads(ws, col_index, leads):
 
     log.info(f"[sheet] {len(rows_to_write)} lead baru disisipkan ke CLIENT tab tepat setelah "
              f"data asli (mulai baris {divider_row + 1}, divider merah di baris {divider_row}).")
+
+    _resync_no_column(ws)
     return len(rows_to_write)
