@@ -97,7 +97,7 @@ def _too_soon_for_next_round(row, round_number):
     return datetime.now(timezone.utc) - sent_at < timedelta(days=MIN_DAYS_BETWEEN_ROUNDS)
 
 
-def process_row(row, col_index, ws, smtp_server, email_budget, wa_quota):
+def process_row(row, col_index, ws, smtp_state, email_budget, wa_quota):
     """Return "whatsapp"/"email" kalau berhasil kirim offer beneran (bukan DRY_RUN), None kalau
     skip/gagal - dipakai main() buat ngitung total client dihubungi run ini per channel (rekap
     harian CORE DATABASE)."""
@@ -175,7 +175,7 @@ def process_row(row, col_index, ws, smtp_server, email_budget, wa_quota):
             if DRY_RUN:
                 log.info(f"[DRY_RUN] would send Email to {email} | subject={subject}\n{body}\n")
                 channel_used = "email"
-            elif send_email(smtp_server, email, subject, body):
+            elif send_email(smtp_state, email, subject, body):
                 channel_used = "email"
                 email_budget["remaining"] -= 1
 
@@ -226,15 +226,20 @@ def main():
 
     # Satu sesi SMTP dipakai ulang buat semua email run ini, bukan connect+login per email -
     # itu yang bikin Gmail nge-rate-limit login ("454 Too many login attempts") setelah ratusan
-    # email dalam sehari. Gak dibuka sama sekali kalau DRY_RUN atau budget udah abis.
-    smtp_server = None if (DRY_RUN or email_budget["remaining"] <= 0) else open_smtp_session()
+    # email dalam sehari. Gak dibuka sama sekali kalau DRY_RUN atau budget udah abis. Dibungkus
+    # dict (bukan variabel biasa) karena send_email() bisa reconnect di tengah run kalau koneksi
+    # putus (lihat send_email.py) - dict-nya yang kepakai bareng biar reconnect itu nempel ke
+    # baris-baris berikutnya juga, bukan cuma satu baris yang lagi diproses.
+    smtp_state = {
+        "server": None if (DRY_RUN or email_budget["remaining"] <= 0) else open_smtp_session()
+    }
 
     wa_count = 0
     email_count = 0
     try:
         for row in rows:
             try:
-                channel = process_row(row, col_index, ws, smtp_server, email_budget, wa_quota)
+                channel = process_row(row, col_index, ws, smtp_state, email_budget, wa_quota)
                 if channel == "whatsapp":
                     wa_count += 1
                     if not DRY_RUN:
@@ -244,7 +249,7 @@ def main():
             except Exception as e:
                 log.error(f"[error] gagal proses baris {row.get('_row_number')}: {e}")
     finally:
-        close_smtp_session(smtp_server)
+        close_smtp_session(smtp_state["server"])
 
     sent_count = wa_count + email_count
     if not DRY_RUN:
