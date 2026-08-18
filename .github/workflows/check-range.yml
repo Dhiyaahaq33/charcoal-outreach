@@ -1,0 +1,35 @@
+name: Check Range (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_row:
+        description: "Baris awal"
+        required: false
+        default: "4228"
+      end_row:
+        description: "Baris akhir"
+        required: false
+        default: "4566"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check range
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          PYTHONUNBUFFERED: "1"
+        run: python -u scripts/check_range.py "${{ github.event.inputs.start_row }}" "${{ github.event.inputs.end_row }}"
