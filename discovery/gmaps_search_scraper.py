@@ -122,6 +122,170 @@ LOCAL_TERMS = {
     "Pakistan": ["کوئلہ"],
     "Bangladesh": ["কাঠকয়লা"],
     "Iran": ["زغال چوب"],
+
+    # --- Perluasan 17 Aug 2026: sisa ~185 negara (dari 249 total) per user request "tambahin
+    # bahasa lokal buat 200 negara sisanya juga". Negara yang bahasanya SAMA dengan yang udah ada
+    # di atas (Spanyol/Prancis/Arab/Portugis/Belanda/Mandarin/Italia/Melayu/Persia) tinggal reuse
+    # istilah yang sama. Bahasa BARU pakai terjemahan terbaik yang bisa dipastikan (best-effort -
+    # sama kayak entri-entri di atas, belum diverifikasi native speaker, tapi jauh lebih baik
+    # daripada Inggris doang buat listing yang namanya/kategorinya cuma ada dalam bahasa lokal).
+    # Negara yang DILEWATIN sengaja: wilayah gak berpenghuni/nyaris gak ada aktivitas bisnis
+    # (Antarctica, Bouvet Island, Heard Island and McDonald Islands, French Southern Territories,
+    # British Indian Ocean Territory, South Georgia and the South Sandwich Islands, Pitcairn,
+    # Tokelau, Niue, Norfolk Island) dan negara yang bahasa resminya udah Inggris (BUYER_QUERIES
+    # udah nyakup penuh, nambah istilah lokal di situ cuma redundan) - dua kelompok ini tetap
+    # kecover lewat kombinasi BUYER_QUERIES + negara di _all_combos(), cuma gak punya entri di sini.
+
+    # Spanyol (reuse "carbón vegetal")
+    "Costa Rica": ["carbón vegetal"],
+    "Cuba": ["carbón vegetal"],
+    "Dominican Republic": ["carbón vegetal"],
+    "Ecuador": ["carbón vegetal"],
+    "El Salvador": ["carbón vegetal"],
+    "Guatemala": ["carbón vegetal"],
+    "Honduras": ["carbón vegetal"],
+    "Nicaragua": ["carbón vegetal"],
+    "Panama": ["carbón vegetal"],
+    "Paraguay": ["carbón vegetal"],
+    "Uruguay": ["carbón vegetal"],
+    "Venezuela": ["carbón vegetal"],
+    "Equatorial Guinea": ["carbón vegetal"],
+    "Bolivia": ["carbón vegetal"],
+    "Puerto Rico": ["carbón vegetal"],
+
+    # Prancis (reuse "charbon de bois")
+    "Benin": ["charbon de bois"],
+    "Burkina Faso": ["charbon de bois"],
+    "Cameroon": ["charbon de bois"],
+    "Central African Republic": ["charbon de bois"],
+    "Chad": ["charbon de bois"],
+    "Comoros": ["charbon de bois"],
+    "Congo": ["charbon de bois"],
+    "Congo, The Democratic Republic of the": ["charbon de bois"],
+    "Côte d'Ivoire": ["charbon de bois"],
+    "Djibouti": ["charbon de bois"],
+    "Gabon": ["charbon de bois"],
+    "Guinea": ["charbon de bois"],
+    "Madagascar": ["charbon de bois"],
+    "Mali": ["charbon de bois"],
+    "Monaco": ["charbon de bois"],
+    "Niger": ["charbon de bois"],
+    "Rwanda": ["charbon de bois"],
+    "Senegal": ["charbon de bois"],
+    "Seychelles": ["charbon de bois"],
+    "Togo": ["charbon de bois"],
+    "Vanuatu": ["charbon de bois"],
+    "French Guiana": ["charbon de bois"],
+    "French Polynesia": ["charbon de bois"],
+    "Guadeloupe": ["charbon de bois"],
+    "Martinique": ["charbon de bois"],
+    "Mayotte": ["charbon de bois"],
+    "Réunion": ["charbon de bois"],
+    "Saint Barthélemy": ["charbon de bois"],
+    "Saint Martin (French part)": ["charbon de bois"],
+    "Saint Pierre and Miquelon": ["charbon de bois"],
+    "Wallis and Futuna": ["charbon de bois"],
+    "Burundi": ["charbon de bois"],
+    "Canada": ["charbon de bois"],
+    "Mauritius": ["charbon de bois"],
+    "Luxembourg": ["charbon de bois"],
+    "Andorra": ["charbon de bois"],
+
+    # Portugis (reuse "carvão vegetal")
+    "Cabo Verde": ["carvão vegetal"],
+    "Guinea-Bissau": ["carvão vegetal"],
+    "Sao Tome and Principe": ["carvão vegetal"],
+    "Timor-Leste": ["carvão vegetal"],
+
+    # Arab (reuse "فحم")
+    "Yemen": ["فحم"],
+    "Western Sahara": ["فحم"],
+    "Sudan": ["فحم"],
+    "South Sudan": ["فحم"],
+    "Mauritania": ["فحم"],
+    "Eritrea": ["فحم"],
+
+    # Belanda (reuse "houtskool")
+    "Aruba": ["houtskool"],
+    "Bonaire, Sint Eustatius and Saba": ["houtskool"],
+    "Curaçao": ["houtskool"],
+    "Sint Maarten (Dutch part)": ["houtskool"],
+    "Suriname": ["houtskool"],
+    "South Africa": ["houtskool"],  # Afrikaans, kata sama dengan Belanda
+    "Namibia": ["houtskool"],
+
+    # Mandarin (reuse "木炭")
+    "Hong Kong": ["木炭"],
+    "Macao": ["木炭"],
+    "Singapore": ["木炭"],
+
+    # Italia (reuse)
+    "San Marino": ["carbonella"],
+    "Holy See (Vatican City State)": ["carbonella"],
+
+    # Melayu (reuse "arang kayu")
+    "Brunei Darussalam": ["arang kayu"],
+
+    # Persia (reuse "زغال چوب")
+    "Afghanistan": ["زغال چوب"],
+
+    # Swedia (reuse "träkol")
+    "Åland Islands": ["träkol"],
+
+    # Norwegia (reuse "trekull")
+    "Svalbard and Jan Mayen": ["trekull"],
+
+    # Swahili (reuse "mkaa")
+    "Tanzania": ["mkaa"],
+    "Uganda": ["mkaa"],
+
+    # --- Bahasa baru (satu negara/grup kecil per bahasa) ---
+    "Albania": ["qymyr druri"],                    # Albania
+    "Armenia": ["փայտածուխ"],                       # Armenia
+    "Azerbaijan": ["odun kömürü"],                  # Azerbaijan (mirip Turki)
+    "Belarus": ["драўняны вугаль"],                 # Belarusia
+    "Bosnia and Herzegovina": ["drveni ugalj"],     # Bosnia
+    "Bulgaria": ["дървени въглища"],                # Bulgaria
+    "Croatia": ["drveni ugljen"],                   # Kroasia
+    "Cyprus": ["κάρβουνο ξύλου"],                   # Yunani (mayoritas)
+    "Czechia": ["dřevěné uhlí"],                    # Ceko
+    "Denmark": ["trækul"],                          # Denmark
+    "Estonia": ["puusüsi"],                         # Estonia
+    "Ethiopia": ["ከሰል"],                            # Amharik
+    "Finland": ["puuhiili"],                        # Finlandia
+    "Georgia": ["ხის ნახშირი"],                     # Georgia
+    "Greece": ["κάρβουνο ξύλου"],                   # Yunani
+    "Haiti": ["charbon de bois"],                   # Prancis (bahasa resmi bareng Kreol Haiti)
+    "Hungary": ["faszén"],                          # Hungaria
+    "Iceland": ["viðarkol"],                        # Islandia
+    "Israel": ["פחם עץ"],                           # Ibrani
+    "Kazakhstan": ["ағаш көмірі"],                  # Kazakh
+    "Kenya": ["mkaa"],                              # Swahili
+    "Kyrgyzstan": ["жыгач көмүр"],                  # Kirgistan
+    "Laos": ["ຖ່ານ"],                                # Lao
+    "Latvia": ["kokogle"],                          # Latvia
+    "Lithuania": ["medžio anglis"],                 # Lituania
+    "Cambodia": ["ធ្យូង"],                            # Khmer
+    "Mongolia": ["модны нүүрс"],                    # Mongolia
+    "Montenegro": ["drveni ugalj"],                 # Montenegro
+    "Myanmar": ["မီးသွေး"],                          # Myanmar/Burma
+    "Nepal": ["कोइला"],                              # Nepal
+    "Nigeria": ["gawayi"],                          # Hausa (salah satu bahasa besar Nigeria)
+    "North Macedonia": ["дрвен јаглен"],             # Makedonia Utara
+    "Norway": ["trekull"],                          # Norwegia
+    "Philippines": ["uling"],                       # Filipino/Tagalog
+    "Poland": ["węgiel drzewny"],                   # Polandia
+    "Romania": ["cărbune de lemn"],                 # Rumania
+    "Serbia": ["дрвени угаљ"],                      # Serbia
+    "Slovakia": ["drevené uhlie"],                  # Slovakia
+    "Slovenia": ["oglje"],                          # Slovenia
+    "Somalia": ["dhuxul"],                          # Somalia
+    "Sri Lanka": ["අඟුරු"],                          # Sinhala
+    "Sweden": ["träkol"],                           # Swedia
+    "Tajikistan": ["ангишти чӯбӣ"],                 # Tajikistan
+    "Turkmenistan": ["agaç kömür"],                 # Turkmenistan
+    "Uzbekistan": ["yog'och ko'mir"],               # Uzbekistan
+    "Fiji": ["कोयला"],                              # Hindi (populasi Indo-Fiji besar)
 }
 
 MAX_COMBOS_PER_RUN = 60
