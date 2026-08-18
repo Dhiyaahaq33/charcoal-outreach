@@ -1,85 +1,33 @@
-"""Cari & reset baris yang SALAH ditandai hitam + FINAL=LOST oleh mark_row_unreachable() gara-gara
-rule deteksi landline yang LAMA (phonenumbers-based) - sekarang diganti rule tanda-kurung
+"""Cari & reset baris yang SALAH ditandai FINAL=LOST oleh mark_row_unreachable() gara-gara rule
+deteksi landline yang LAMA (phonenumbers-based) - sekarang diganti rule tanda-kurung
 (has_office_format(), lihat commit d73a532). Baris yang phonenumbers dulu SALAH nganggep landline
 padahal nomornya gak ditulis pakai tanda kurung (jadi harusnya WA-capable di rule baru), DAN gak
 punya email juga, kelanjur ditandai LOST permanen - itu false positive yang perlu di-undo.
 
-Identifikasi 2 lapis biar gak nyentuh LOST manual asli dari data kurasi lama (yang gak ada
-hubungannya sama bug ini):
-  1. FINAL == "LOST"
-  2. Background baris HITAM (ciri khas satu-satunya dari mark_row_unreachable() - fitur baru sesi
-     ini, gak pernah dipakai buat data lama) - dicek via raw Sheets API (gspread gak expose format
-     lewat get_all_values()).
-Baru dari situ, cek ulang pakai rule BARU: kalau raw_number ADA dan has_office_format() FALSE
-(gak ada tanda kurung) DAN email masih kosong -> ini false positive, reset FINAL & warna balik ke
-default, biar main.py re-evaluate dari awal run berikutnya.
+Identifikasi TANPA perlu cek warna baris (awalnya nyoba cek background HITAM via raw Sheets API,
+tapi ternyata gak reliable - scripts/move_batch_to_top.py yang jalan lebih dulu mindahin NILAI sel
+doang lewat ws.update(), formatting/warna GAK ikut pindah bareng, jadi warna hitam "ketinggalan" di
+posisi baris lama sementara datanya udah pindah ke baris lain - konfirmasi langsung: baris
+"Tradeasia International" yang diketahui FINAL=LOST dari log run 18 Aug ternyata background-nya
+udah putih sekarang). Cara yang PASTI: baris hasil scraping (row > ORIGINAL_DATA_END_ROW) CUMA
+BISA punya FINAL=LOST dari mark_row_unreachable() - discovery_main.py gak pernah nyetel FINAL
+waktu insert lead baru, dan gak ada kode lain yang nyetel LOST buat baris di area ini. Jadi
+posisi baris (>673) aja udah cukup buat mastiin ini bukan LOST manual dari data kurasi asli
+(671 client awal, di luar range yang disentuh script ini).
 
 Run manual: python scripts/fix_wrongly_lost_rows.py
 """
 
-import json
 import logging
 import sys
+import time
 
 sys.path.insert(0, ".")
-from config import GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SHEET_ID, CLIENT_SHEET_TAB
 from sheet_client import get_worksheet, HEADER_ROW, ORIGINAL_DATA_END_ROW, _col_letter, _retry_on_429
 from send_whatsapp import extract_number, has_office_format
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
-
-
-def _authed_session():
-    from google.auth.transport.requests import AuthorizedSession
-    from google.oauth2.service_account import Credentials
-
-    info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
-    creds = Credentials.from_service_account_info(
-        info, scopes=["https://www.googleapis.com/auth/spreadsheets"]
-    )
-    return AuthorizedSession(creds)
-
-
-def _black_rows(session, row_numbers, chunk_size=50):
-    """Cek background sekaligus buat banyak baris dalam SATU request per chunk (bukan 1
-    request/baris - itu yang bikin 429 kena cepet waktu kandidatnya ratusan). Return set baris
-    yang backgroundnya HITAM."""
-    import time
-
-    url = f"https://sheets.googleapis.com/v4/spreadsheets/{GOOGLE_SHEET_ID}"
-    black = set()
-
-    for i in range(0, len(row_numbers), chunk_size):
-        chunk = row_numbers[i:i + chunk_size]
-        params = [("ranges", f"{CLIENT_SHEET_TAB}!A{r}:A{r}") for r in chunk]
-        params.append(("fields", "sheets.data.rowData.values.userEnteredFormat.backgroundColor"))
-
-        for attempt in range(5):
-            resp = session.get(url, params=params, timeout=30)
-            if resp.status_code == 429:
-                wait = 5 * (attempt + 1)
-                log.warning(f"[fix-lost] kena rate-limit cek warna (chunk {i}), retry {wait}s...")
-                time.sleep(wait)
-                continue
-            resp.raise_for_status()
-            break
-        else:
-            resp.raise_for_status()
-
-        data = resp.json()
-        for row_number, sheet_data in zip(chunk, data.get("sheets", [{}])[0].get("data", [])):
-            try:
-                bg = sheet_data["rowData"][0]["values"][0]["userEnteredFormat"]["backgroundColor"]
-            except (KeyError, IndexError):
-                continue
-            if bg.get("red", 1) < 0.1 and bg.get("green", 1) < 0.1 and bg.get("blue", 1) < 0.1:
-                black.add(row_number)
-
-        if i + chunk_size < len(row_numbers):
-            time.sleep(2)
-
-    return black
 
 
 def run():
@@ -91,7 +39,7 @@ def run():
 
     all_values = ws.get_all_values()
 
-    lost_candidates = []
+    to_reset = []
     for i, row in enumerate(all_values[ORIGINAL_DATA_END_ROW:], start=ORIGINAL_DATA_END_ROW + 1):
         company = row[1].strip() if len(row) > 1 else ""
         if not company:
@@ -108,21 +56,10 @@ def run():
         would_be_wa_now = raw_number and not has_office_format(phone_field, whatsapp_field)
 
         if would_be_wa_now and not email_field:
-            lost_candidates.append(i)
+            to_reset.append(i)
 
-    log.info(f"[fix-lost] {len(lost_candidates)} baris FINAL=LOST yang SEHARUSNYA WA-capable di "
-             f"rule baru (kandidat awal, belum dicek warna).")
-    if not lost_candidates:
-        return
-
-    session = _authed_session()
-    black_set = _black_rows(session, lost_candidates)
-    to_reset = [r for r in lost_candidates if r in black_set]
-
-    log.info(f"[fix-lost] {len(to_reset)} dari kandidat itu beneran dicat HITAM (ciri khas "
-             f"mark_row_unreachable()) - ini yang di-reset. Sisanya ({len(lost_candidates) - len(to_reset)}) "
-             f"dibiarin (kemungkinan LOST manual asli, bukan dari bug ini).")
-
+    log.info(f"[fix-lost] {len(to_reset)} baris FINAL=LOST yang SEHARUSNYA WA-capable di rule "
+             f"baru (dan gak ada email) - ini false positive dari rule lama, di-reset.")
     if not to_reset:
         return
 
@@ -131,7 +68,6 @@ def run():
         updates.append({"range": f"{_col_letter(final_col)}{row_number}", "values": [[""]]})
     _retry_on_429(lambda u=updates: ws.batch_update(u, value_input_option="RAW"))
 
-    import time
     for row_number in to_reset:
         _retry_on_429(
             ws.format, f"A{row_number}:{last_col}{row_number}",
@@ -144,6 +80,59 @@ def run():
 
     log.info(f"[fix-lost] selesai - {len(to_reset)} baris di-reset (FINAL dikosongin, warna balik "
              f"normal), bakal di-evaluate ulang main.py run berikutnya.")
+
+    _resync_row_colors(ws, all_values, final_col, ncols, last_col, to_reset)
+
+
+def _resync_row_colors(ws, all_values, final_col, ncols, last_col, already_reset):
+    """Efek samping dari move_batch_to_top.py sebelumnya: itu mindahin NILAI sel doang (ws.update()
+    values-only), formatting/warna GAK ikut kepindah bareng datanya - jadi warna hitam bisa
+    "ketinggalan" di posisi baris lama sementara datanya udah geser ke baris lain (kejadian nyata:
+    baris "Tradeasia International" FINAL=LOST tapi background udah putih). Ini nyamain lagi warna
+    tiap baris hasil scraping sesuai status FINAL SAAT INI.
+
+    Efisien: PUTIHKAN SEMUA baris scraping sekaligus dalam SATU request (bukan per-baris - mayoritas
+    ribuan baris emang seharusnya putih), baru HITAMKAN ULANG cuma baris yang FINAL=LOST (jumlahnya
+    jauh lebih sedikit, itu baru per-baris)."""
+    last_row_with_data = len(all_values)
+    while last_row_with_data > ORIGINAL_DATA_END_ROW and not any(
+        c.strip() for c in all_values[last_row_with_data - 1]
+    ):
+        last_row_with_data -= 1
+
+    scrape_start = ORIGINAL_DATA_END_ROW + 1  # termasuk baris pembatas merah
+    log.info(f"[fix-lost] resync warna: putihkan A{scrape_start}:{last_col}{last_row_with_data} "
+             f"dulu (satu request)...")
+    _retry_on_429(ws.format, f"A{scrape_start}:{last_col}{last_row_with_data}", {
+        "backgroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
+        "textFormat": {"foregroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0}},
+    })
+    _retry_on_429(ws.format, f"A{scrape_start}:{last_col}{scrape_start}", {
+        "backgroundColor": {"red": 1.0, "green": 0.0, "blue": 0.0}
+    })  # pembatas merah balik lagi
+
+    already_reset_set = set(already_reset)
+    should_be_black = []
+    for i, row in enumerate(all_values[ORIGINAL_DATA_END_ROW:], start=ORIGINAL_DATA_END_ROW + 1):
+        company = row[1].strip() if len(row) > 1 else ""
+        if not company or i in already_reset_set:
+            continue
+        final_val = row[final_col - 1].strip().upper() if len(row) >= final_col else ""
+        if final_val == "LOST":
+            should_be_black.append(i)
+
+    log.info(f"[fix-lost] hitamkan ulang {len(should_be_black)} baris yang beneran FINAL=LOST...")
+    for row_number in should_be_black:
+        _retry_on_429(
+            ws.format, f"A{row_number}:{last_col}{row_number}",
+            {
+                "backgroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0},
+                "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}},
+            },
+        )
+        time.sleep(1)
+
+    log.info("[fix-lost] resync warna selesai.")
 
 
 if __name__ == "__main__":
