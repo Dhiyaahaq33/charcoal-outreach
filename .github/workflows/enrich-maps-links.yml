@@ -24,6 +24,19 @@ jobs:
           pip install -r requirements.txt
           python -m playwright install --with-deps chromium
 
+      # Jalur cadangan KETIGA buat command Telegram - jadwal ini beda offset (:15/:45) dari
+      # outreach.yml/lead-discovery.yml (:00/:30), jadi nambah titik cek independen lagi biar
+      # command "kirim wa ke N klien" dkk kepancing lebih cepat kalau jadwal lain lagi lambat.
+      - name: Poll Telegram commands
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONUNBUFFERED: "1"
+        run: python -u telegram_bot.py
+        continue-on-error: true
+
       - name: Enrich Contact Person with Maps links
         env:
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}

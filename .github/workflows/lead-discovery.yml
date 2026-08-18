@@ -31,6 +31,21 @@ jobs:
           pip install -r requirements.txt
           python -m playwright install --with-deps chromium
 
+      # Jalur cadangan KEDUA buat command Telegram (WA "kirim ke N klien"/"stop wa"/"status") -
+      # telegram-listener.yml sendiri (cron 5 menit) kadang lambat diaktifin GitHub-nya, dan
+      # outreach.yml (cron 30 menit) kadang juga suka molor jadwalnya. Nempelin poll di sini juga
+      # nambah satu lagi titik cek independen, biar command tetap kepancing gak terlalu lama
+      # nunggu meski salah satu jadwal lain lagi lambat.
+      - name: Poll Telegram commands
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONUNBUFFERED: "1"
+        run: python -u telegram_bot.py
+        continue-on-error: true
+
       - name: Run lead discovery
         env:
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
