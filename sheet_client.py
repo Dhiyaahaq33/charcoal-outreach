@@ -305,19 +305,23 @@ def _resync_no_column(ws):
 
 
 def append_new_leads(ws, col_index, leads):
-    """Sisipkan lead baru (dari discovery/) tepat SETELAH dataset asli (bukan di ujung bawah
-    sheet), dengan SATU baris pemisah kosong (dicat merah) sebelum data - tiap panggilan nyisip
-    batch barunya di posisi yang sama (tepat setelah data asli), jadi batch terbaru selalu nempel
-    di atas batch-batch sebelumnya, semuanya tetap tepat setelah data asli sebagai satu blok.
-    "No" auto-increment dari nilai max saat ini (di seluruh sheet, bukan cuma dataset asli).
+    """Tambahkan lead baru (dari discovery/) di PALING BAWAH/AKHIR sheet - per user request
+    ("hasil scraping data itu taro di data terakhir di sheet, jgn malah yg lama taro di akhir").
+    Desain LAMA nyisip tiap batch baru tepat SETELAH dataset asli (row 674 tetap), yang justru
+    bikin batch LAMA makin lama makin ke bawah/akhir tiap ada batch baru masuk - kebalikan dari
+    yang diminta. Sekarang: SATU baris pemisah kosong (dicat merah) dibikin SEKALI doang waktu
+    batch pertama nempel tepat setelah data asli (row ORIGINAL_DATA_END_ROW+1), abis itu SEMUA
+    batch berikutnya tinggal ditambahkan setelah baris terakhir yang udah ada isinya - gak pernah
+    nyisip/geser apa pun lagi.
 
+    Ini juga otomatis ngilangin akar masalah bug "warna merah nular" yang pernah kejadian
+    (insert_rows() gspread bawa-bawa isu inherit formatting dari baris yang digeser) - append
+    biasa (ws.update() di baris kosong baru) gak punya masalah inherit-formatting itu sama sekali.
+
+    "No" auto-increment dari nilai max saat ini (di seluruh sheet, bukan cuma dataset asli).
     col_index: hasil ensure_extra_columns(ws), buat tau posisi kolom LAST_ROUND/LAST_SENT_AT/
     Website. Kolom Website diisi website asli lead (kalau ketemu) atau link Google Maps-nya
-    sebagai fallback - biar setiap lead scraping selalu punya link buat verifikasi manual.
-
-    Pakai ws.insert_rows() (bulk, geser baris di bawahnya turun otomatis) - BUKAN per-cell
-    update_cell() - biar gak kena Sheets API write-rate limit (kejadian nyata waktu develop:
-    429 Quota exceeded setelah puluhan update_cell() beruntun)."""
+    sebagai fallback - biar setiap lead scraping selalu punya link buat verifikasi manual."""
     if not leads:
         return 0
 
@@ -326,7 +330,6 @@ def append_new_leads(ws, col_index, leads):
     website_col_idx = col_index.get("Website")  # 1-based, None kalau kolom belum ada
 
     all_values = ws.get_all_values()
-    original_end = ORIGINAL_DATA_END_ROW
     existing_nos = [
         int(row[0]) for row in all_values[HEADER_ROW:]
         if row and row[0].strip().isdigit()
@@ -351,40 +354,46 @@ def append_new_leads(ws, col_index, leads):
         rows_to_write.append(row)
         next_no += 1
 
-    divider_row = original_end + 1
-    insert_block = [[""] * ncols] + rows_to_write
+    # Baris terakhir yang beneran ada isinya - baris baru selalu nambah PERSIS setelah ini,
+    # gak pernah nyisip di tengah. Kalau belum ada data scraping sama sekali (sheet masih persis
+    # berakhir di data asli), ini otomatis balik ke ORIGINAL_DATA_END_ROW.
+    last_row_with_data = len(all_values)
+    while last_row_with_data > ORIGINAL_DATA_END_ROW and not any(
+        c.strip() for c in all_values[last_row_with_data - 1]
+    ):
+        last_row_with_data -= 1
 
-    if divider_row + len(insert_block) > ws.row_count:
-        ws.add_rows(divider_row + len(insert_block) - ws.row_count)
+    last_col = _col_letter(ncols)
+    divider_row = ORIGINAL_DATA_END_ROW + 1
+    is_first_batch_ever = last_row_with_data <= ORIGINAL_DATA_END_ROW
+
+    if is_first_batch_ever:
+        # Batch scraping PERTAMA - bikin satu baris pemisah kosong dicat merah, SEKALI SAJA.
+        # Baris ini gak akan pernah disentuh/digeser lagi oleh batch-batch berikutnya.
+        if divider_row + 1 + len(rows_to_write) > ws.row_count:
+            ws.add_rows(divider_row + 1 + len(rows_to_write) - ws.row_count)
+        ws.format(f"A{divider_row}:{last_col}{divider_row}", {
+            "backgroundColor": {"red": 1.0, "green": 0.0, "blue": 0.0}
+        })
+        data_start = divider_row + 1
+    else:
+        data_start = last_row_with_data + 1
+        if data_start + len(rows_to_write) - 1 > ws.row_count:
+            ws.add_rows(data_start + len(rows_to_write) - 1 - ws.row_count)
+
+    data_end = data_start + len(rows_to_write) - 1
 
     # RAW, not USER_ENTERED - phone numbers like "0" or "5xx-xxx-xxxx" can get parsed as an
     # arithmetic expression by Sheets under USER_ENTERED, producing #ERROR! (seen live in
     # testing). Every field here is plain text/digits, never a formula, so RAW is correct.
-    #
-    # inherit_from_before=True - gspread's DEFAULT (False) inherits formatting from whatever
-    # currently sits at `divider_row` (the row being pushed down), which is ALWAYS the previous
-    # run's red divider row (every batch inserts at this exact same fixed position). That made
-    # every new batch's rows come in ALREADY red, cascading worse with every 30-min discovery run
-    # (confirmed live: rows A675+ ended up almost entirely red after ~a day of runs). Inheriting
-    # from BEFORE instead (the last row of stable data above the insertion point) avoids that.
-    ws.insert_rows(insert_block, divider_row, value_input_option="RAW", inherit_from_before=True)
-
-    last_col = _col_letter(ncols)
-    # Defensive belt-and-suspenders on top of inherit_from_before=True above: explicitly clear
-    # background on the freshly-inserted DATA rows (not the divider) so a leftover red/black
-    # format from some other row can never bleed through regardless of inherit behavior.
-    data_start = divider_row + 1
-    data_end = divider_row + len(rows_to_write)
+    ws.update(f"A{data_start}:{last_col}{data_end}", rows_to_write, value_input_option="RAW")
     ws.format(f"A{data_start}:{last_col}{data_end}", {
         "backgroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
         "textFormat": {"foregroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0}},
     })
-    ws.format(f"A{divider_row}:{last_col}{divider_row}", {
-        "backgroundColor": {"red": 1.0, "green": 0.0, "blue": 0.0}
-    })
 
-    log.info(f"[sheet] {len(rows_to_write)} lead baru disisipkan ke CLIENT tab tepat setelah "
-             f"data asli (mulai baris {divider_row + 1}, divider merah di baris {divider_row}).")
+    log.info(f"[sheet] {len(rows_to_write)} lead baru ditambahkan di AKHIR CLIENT tab "
+             f"(baris {data_start}-{data_end}).")
 
     _resync_no_column(ws)
     return len(rows_to_write)
