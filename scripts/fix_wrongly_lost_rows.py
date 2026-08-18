@@ -41,23 +41,45 @@ def _authed_session():
     return AuthorizedSession(creds)
 
 
-def _is_black_background(session, row_number):
+def _black_rows(session, row_numbers, chunk_size=50):
+    """Cek background sekaligus buat banyak baris dalam SATU request per chunk (bukan 1
+    request/baris - itu yang bikin 429 kena cepet waktu kandidatnya ratusan). Return set baris
+    yang backgroundnya HITAM."""
+    import time
+
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{GOOGLE_SHEET_ID}"
-    params = {
-        "ranges": f"{CLIENT_SHEET_TAB}!A{row_number}:A{row_number}",
-        "fields": "sheets.data.rowData.values.userEnteredFormat.backgroundColor",
-    }
-    resp = session.get(url, params=params, timeout=20)
-    resp.raise_for_status()
-    data = resp.json()
-    try:
-        bg = data["sheets"][0]["data"][0]["rowData"][0]["values"][0]["userEnteredFormat"]["backgroundColor"]
-    except (KeyError, IndexError):
-        return False
-    r = bg.get("red", 1)
-    g = bg.get("green", 1)
-    b = bg.get("blue", 1)
-    return r < 0.1 and g < 0.1 and b < 0.1
+    black = set()
+
+    for i in range(0, len(row_numbers), chunk_size):
+        chunk = row_numbers[i:i + chunk_size]
+        params = [("ranges", f"{CLIENT_SHEET_TAB}!A{r}:A{r}") for r in chunk]
+        params.append(("fields", "sheets.data.rowData.values.userEnteredFormat.backgroundColor"))
+
+        for attempt in range(5):
+            resp = session.get(url, params=params, timeout=30)
+            if resp.status_code == 429:
+                wait = 5 * (attempt + 1)
+                log.warning(f"[fix-lost] kena rate-limit cek warna (chunk {i}), retry {wait}s...")
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            break
+        else:
+            resp.raise_for_status()
+
+        data = resp.json()
+        for row_number, sheet_data in zip(chunk, data.get("sheets", [{}])[0].get("data", [])):
+            try:
+                bg = sheet_data["rowData"][0]["values"][0]["userEnteredFormat"]["backgroundColor"]
+            except (KeyError, IndexError):
+                continue
+            if bg.get("red", 1) < 0.1 and bg.get("green", 1) < 0.1 and bg.get("blue", 1) < 0.1:
+                black.add(row_number)
+
+        if i + chunk_size < len(row_numbers):
+            time.sleep(2)
+
+    return black
 
 
 def run():
@@ -94,10 +116,8 @@ def run():
         return
 
     session = _authed_session()
-    to_reset = []
-    for row_number in lost_candidates:
-        if _is_black_background(session, row_number):
-            to_reset.append(row_number)
+    black_set = _black_rows(session, lost_candidates)
+    to_reset = [r for r in lost_candidates if r in black_set]
 
     log.info(f"[fix-lost] {len(to_reset)} dari kandidat itu beneran dicat HITAM (ciri khas "
              f"mark_row_unreachable()) - ini yang di-reset. Sisanya ({len(lost_candidates) - len(to_reset)}) "
@@ -111,6 +131,7 @@ def run():
         updates.append({"range": f"{_col_letter(final_col)}{row_number}", "values": [[""]]})
     _retry_on_429(lambda u=updates: ws.batch_update(u, value_input_option="RAW"))
 
+    import time
     for row_number in to_reset:
         _retry_on_429(
             ws.format, f"A{row_number}:{last_col}{row_number}",
@@ -119,6 +140,7 @@ def run():
                 "textFormat": {"foregroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0}},
             },
         )
+        time.sleep(1)
 
     log.info(f"[fix-lost] selesai - {len(to_reset)} baris di-reset (FINAL dikosongin, warna balik "
              f"normal), bakal di-evaluate ulang main.py run berikutnya.")
