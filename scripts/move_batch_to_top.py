@@ -71,7 +71,8 @@ def run():
     new_order = [row + [""] * (ncols - len(row)) if len(row) < ncols else row[:ncols]
                  for row in new_order]
 
-    ws.update(f"A{scrape_start}:{last_col}{last_row_with_data}", new_order, value_input_option="RAW")
+    ws.update(range_name=f"A{scrape_start}:{last_col}{last_row_with_data}", values=new_order,
+              value_input_option="RAW")
     log.info(f"[move-batch] urutan blok scraping ditulis ulang (baris {scrape_start}-"
              f"{last_row_with_data}).")
 

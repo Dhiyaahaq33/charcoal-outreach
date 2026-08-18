@@ -282,7 +282,14 @@ def _resync_no_column(ws):
     """Renumber kolom "No" berurutan (1,2,3,...) buat semua baris yang punya Company, dalam urutan
     baris fisik - dipanggil otomatis tiap kali append_new_leads() nyisip batch baru, karena
     ws.insert_rows() geser baris di bawahnya turun tapi NILAI No lama ikut kebawa apa adanya (jadi
-    ada gap besar kalau gak di-resync). Baris kosong (divider/template) dilewatin."""
+    ada gap besar kalau gak di-resync). Baris kosong (divider/template) dilewatin.
+
+    Retry+backoff di 429 - sheet ini udah ribuan baris dan beberapa workflow (outreach/discovery/
+    enrich-maps/telegram) suka nulis ke sheet yang sama nyaris bersamaan, jadi write-quota Sheets
+    API (per menit per user) kadang kepakai bareng sampai kena APIError 429 di tengah resync besar
+    (kejadian nyata: 1 chunk gagal pas resync ~3900 baris). Delay antar chunk juga dinaikin."""
+    import time
+
     all_values = ws.get_all_values()
     batch = []
     counter = 0
@@ -296,11 +303,21 @@ def _resync_no_column(ws):
 
     if not batch:
         return
-    import time
+
     for i in range(0, len(batch), 100):
-        ws.batch_update(batch[i:i + 100], value_input_option="RAW")
+        chunk = batch[i:i + 100]
+        for attempt in range(5):
+            try:
+                ws.batch_update(chunk, value_input_option="RAW")
+                break
+            except Exception as e:
+                if "429" not in str(e) or attempt == 4:
+                    raise
+                wait = 5 * (attempt + 1)
+                log.warning(f"[sheet] kena rate-limit resync No (chunk {i}), retry dalam {wait}s...")
+                time.sleep(wait)
         if i + 100 < len(batch):
-            time.sleep(2)
+            time.sleep(4)
     log.info(f"[sheet] kolom No di-resync ({len(batch)} baris diperbarui).")
 
 
