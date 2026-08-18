@@ -42,7 +42,7 @@ from sheet_client import (
     get_wa_quota, set_wa_quota,
 )
 from timezone_rules import is_open_hour_window
-from send_whatsapp import send_whatsapp, extract_number, is_mobile_number
+from send_whatsapp import send_whatsapp, extract_number, has_office_format
 from send_email import send_email, open_smtp_session, close_smtp_session
 from templates import render_whatsapp, render_email
 
@@ -123,15 +123,19 @@ def process_row(row, col_index, ws, smtp_state, email_budget, wa_quota):
                   f"sejak round terakhir dikirim.")
         return None
 
-    # Nomor kantor/landline gak punya WhatsApp - deteksi via phonenumbers, JANGAN dicoba WA sama
-    # sekali (biar gak ke-Fonnte sia-sia), langsung fallback ke email kalau ada. Kalau dua-duanya
-    # (WA-capable number MAUPUN email) sama sekali gak ada, baris ini dead-end permanen - tandai
-    # hitam + FINAL=LOST dan lanjut ke client lain, per user request.
+    # Nomor kantor/landline gak punya WhatsApp - deteksi dari FORMAT ASLI di sheet: nomor yang
+    # ditulis pakai tanda kurung (mis. "(021) 555-1234", gaya kode area kantor) dianggap landline,
+    # JANGAN dicoba WA sama sekali (biar gak ke-Fonnte sia-sia), langsung fallback ke email kalau
+    # ada. Nomor tanpa tanda kurung dianggap aman/WA-capable (lihat has_office_format() di
+    # send_whatsapp.py - revisi dari deteksi berbasis library phonenumbers, per user request).
+    # Kalau dua-duanya (WA-capable number MAUPUN email) sama sekali gak ada, baris ini dead-end
+    # permanen - tandai hitam + FINAL=LOST dan lanjut ke client lain.
     raw_number = extract_number(row.get("WhatsApp", ""), row.get("Phone", ""))
-    number = raw_number if (raw_number and is_mobile_number(raw_number, country) is not False) else None
-    if raw_number and number is None:
-        log.info(f"[skip-wa] {company}: nomor {raw_number} kedeteksi landline/kantor, WA gak "
-                 f"dicoba, fallback ke email kalau ada.")
+    is_office = has_office_format(row.get("Phone", ""), row.get("WhatsApp", ""))
+    number = raw_number if (raw_number and not is_office) else None
+    if raw_number and is_office:
+        log.info(f"[skip-wa] {company}: nomor {raw_number} ditulis pakai tanda kurung (format "
+                 f"kode area kantor), WA gak dicoba, fallback ke email kalau ada.")
     email = row.get("Email", "").strip()
 
     if not number and not email:
