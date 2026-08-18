@@ -17,7 +17,9 @@ import logging
 import sys
 
 sys.path.insert(0, ".")
-from sheet_client import get_worksheet, HEADER_ROW, ORIGINAL_DATA_END_ROW, _col_letter, _resync_no_column
+from sheet_client import (
+    get_worksheet, HEADER_ROW, ORIGINAL_DATA_END_ROW, _col_letter, _resync_no_column, _retry_on_429,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -71,8 +73,10 @@ def run():
     new_order = [row + [""] * (ncols - len(row)) if len(row) < ncols else row[:ncols]
                  for row in new_order]
 
-    ws.update(range_name=f"A{scrape_start}:{last_col}{last_row_with_data}", values=new_order,
-              value_input_option="RAW")
+    _retry_on_429(
+        ws.update, range_name=f"A{scrape_start}:{last_col}{last_row_with_data}",
+        values=new_order, value_input_option="RAW",
+    )
     log.info(f"[move-batch] urutan blok scraping ditulis ulang (baris {scrape_start}-"
              f"{last_row_with_data}).")
 

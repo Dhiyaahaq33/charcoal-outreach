@@ -278,6 +278,25 @@ def _col_letter(n):
 ORIGINAL_DATA_END_ROW = 673
 
 
+def _retry_on_429(fn, *args, max_attempts=5, **kwargs):
+    """Jalanin fn(*args, **kwargs), retry pakai backoff KHUSUS kalau APIError-nya 429 (rate-limit
+    Sheets API) - dipakai buat semua write (update/batch_update) yang bisa kena rebutan quota
+    barengan sama workflow lain yang nulis ke sheet yang sama (outreach/discovery/enrich-maps/
+    telegram, semuanya jalan on-schedule dan bisa overlap). Error selain 429 langsung dilempar
+    ulang, gak di-retry (bisa nutupin bug beneran kalau di-retry buta)."""
+    import time
+
+    for attempt in range(max_attempts):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            if "429" not in str(e) or attempt == max_attempts - 1:
+                raise
+            wait = 5 * (attempt + 1)
+            log.warning(f"[sheet] kena rate-limit (429), retry dalam {wait}s (percobaan {attempt + 1})...")
+            time.sleep(wait)
+
+
 def _resync_no_column(ws):
     """Renumber kolom "No" berurutan (1,2,3,...) buat semua baris yang punya Company, dalam urutan
     baris fisik - dipanggil otomatis tiap kali append_new_leads() nyisip batch baru, karena
@@ -307,21 +326,13 @@ def _resync_no_column(ws):
 
     for i in range(0, len(batch), 100):
         chunk = batch[i:i + 100]
-        for attempt in range(5):
-            try:
-                # deepcopy WAJIB - gspread.Worksheet.batch_update() memodifikasi dict range di
-                # `chunk` IN-PLACE (nambahin prefix "'CLIENT'!" ke tiap range string tiap
-                # dipanggil). Reuse `chunk` yang sama di retry bikin prefix numpuk berkali-kali
-                # ("'CLIENT'!'CLIENT'!...A1178") dan APIError 400 "Unable to parse range" -
-                # kejadian nyata pas retry gara-gara 429 di percobaan pertama.
-                ws.batch_update(copy.deepcopy(chunk), value_input_option="RAW")
-                break
-            except Exception as e:
-                if "429" not in str(e) or attempt == 4:
-                    raise
-                wait = 5 * (attempt + 1)
-                log.warning(f"[sheet] kena rate-limit resync No (chunk {i}), retry dalam {wait}s...")
-                time.sleep(wait)
+        # deepcopy WAJIB, dan harus DIBUAT ULANG tiap percobaan (bukan sekali di luar) -
+        # gspread.Worksheet.batch_update() memodifikasi dict range di `chunk` IN-PLACE (nambahin
+        # prefix "'CLIENT'!" ke tiap range string tiap dipanggil). _retry_on_429 manggil fn()
+        # lebih dari sekali kalau kena 429 - deepcopy yang di-reuse antar percobaan tetap numpuk
+        # prefix ("'CLIENT'!'CLIENT'!...A1178") dan APIError 400 "Unable to parse range" (kejadian
+        # nyata), jadi lambda di sini WAJIB biar deepcopy-nya fresh tiap panggilan internal.
+        _retry_on_429(lambda c=chunk: ws.batch_update(copy.deepcopy(c), value_input_option="RAW"))
         if i + 100 < len(batch):
             time.sleep(4)
     log.info(f"[sheet] kolom No di-resync ({len(batch)} baris diperbarui).")
