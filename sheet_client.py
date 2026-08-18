@@ -288,6 +288,7 @@ def _resync_no_column(ws):
     enrich-maps/telegram) suka nulis ke sheet yang sama nyaris bersamaan, jadi write-quota Sheets
     API (per menit per user) kadang kepakai bareng sampai kena APIError 429 di tengah resync besar
     (kejadian nyata: 1 chunk gagal pas resync ~3900 baris). Delay antar chunk juga dinaikin."""
+    import copy
     import time
 
     all_values = ws.get_all_values()
@@ -308,7 +309,12 @@ def _resync_no_column(ws):
         chunk = batch[i:i + 100]
         for attempt in range(5):
             try:
-                ws.batch_update(chunk, value_input_option="RAW")
+                # deepcopy WAJIB - gspread.Worksheet.batch_update() memodifikasi dict range di
+                # `chunk` IN-PLACE (nambahin prefix "'CLIENT'!" ke tiap range string tiap
+                # dipanggil). Reuse `chunk` yang sama di retry bikin prefix numpuk berkali-kali
+                # ("'CLIENT'!'CLIENT'!...A1178") dan APIError 400 "Unable to parse range" -
+                # kejadian nyata pas retry gara-gara 429 di percobaan pertama.
+                ws.batch_update(copy.deepcopy(chunk), value_input_option="RAW")
                 break
             except Exception as e:
                 if "429" not in str(e) or attempt == 4:
