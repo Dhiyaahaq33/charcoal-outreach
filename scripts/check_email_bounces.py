@@ -20,10 +20,13 @@ import imaplib
 import logging
 import re
 import sys
+import time
 
 sys.path.insert(0, ".")
 from config import GMAIL_ADDRESS, GMAIL_APP_PASSWORD
-from sheet_client import get_worksheet, ensure_extra_columns, load_rows, HEADER_ROW, _col_letter
+from sheet_client import (
+    get_worksheet, ensure_extra_columns, load_rows, HEADER_ROW, _col_letter, _retry_on_429,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -82,7 +85,7 @@ def _revert_offer(ws, header, row):
         if row.get("FINAL", "").strip().upper() == "PENDING":
             updates.append({"range": f"{_col_letter(final_col)}{row_number}", "values": [[""]]})
 
-    ws.batch_update(updates, value_input_option="RAW")
+    _retry_on_429(lambda u=updates: ws.batch_update(u, value_input_option="RAW"))
     return True
 
 
@@ -114,6 +117,9 @@ def run():
 
     reverted = 0
     not_found = 0
+    skipped_dupe = 0
+    already_reverted_this_run = set()
+
     for msg_id in ids:
         status, msg_data = mail.fetch(msg_id, "(RFC822)")
         raw = msg_data[0][1]
@@ -122,24 +128,37 @@ def run():
 
         if not bounced_email:
             log.warning(f"[bounce] gagal parse email tujuan dari notifikasi bounce (msg {msg_id!r}).")
-            mail.store(msg_id, "+FLAGS", "\\Seen")
+            _retry_on_429(mail.store, msg_id, "+FLAGS", "\\Seen")
             continue
 
-        row = email_to_row.get(bounced_email.strip().lower())
+        key = bounced_email.strip().lower()
+        row = email_to_row.get(key)
         if not row:
             log.warning(f"[bounce] {bounced_email} bounce tapi gak ketemu row-nya di sheet.")
             not_found += 1
-            mail.store(msg_id, "+FLAGS", "\\Seen")
+            _retry_on_429(mail.store, msg_id, "+FLAGS", "\\Seen")
+            continue
+
+        # Gmail sering ngirim BEBERAPA notifikasi bounce buat SATU kegagalan kirim yang sama
+        # (retry/delay notice + bounce final) - kejadian nyata: company yang sama muncul 3-4x di
+        # run pertama. Cuma revert SEKALI per alamat email per run, sisanya tetap ditandai Seen
+        # (biar gak nyangkut jadi UNSEEN terus) tapi gak ngulang decrement LAST_ROUND-nya.
+        if key in already_reverted_this_run:
+            skipped_dupe += 1
+            _retry_on_429(mail.store, msg_id, "+FLAGS", "\\Seen")
             continue
 
         if _revert_offer(ws, header, row):
             reverted += 1
+            already_reverted_this_run.add(key)
             log.info(f"[bounce] {row.get('Company', '?')} ({bounced_email}) - offer di-revert.")
-        mail.store(msg_id, "+FLAGS", "\\Seen")
+        _retry_on_429(mail.store, msg_id, "+FLAGS", "\\Seen")
+        time.sleep(1)
 
     mail.logout()
     log.info(f"[bounce] selesai - {reverted} offer di-revert, {not_found} bounce gak ketemu row-nya "
-             f"di sheet, dari {len(ids)} notifikasi diproses.")
+             f"di sheet, {skipped_dupe} notifikasi duplikat (alamat sama, cuma direvert sekali), "
+             f"dari {len(ids)} notifikasi diproses.")
 
 
 if __name__ == "__main__":
