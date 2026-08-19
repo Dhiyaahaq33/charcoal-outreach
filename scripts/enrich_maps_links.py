@@ -40,7 +40,7 @@ from discovery.relevance import classify_relevance
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-MAX_PER_RUN = 80
+MAX_PER_RUN = 20
 
 
 def _find_maps_profile(page, company, country):
@@ -100,7 +100,15 @@ def run():
     ]
     log.info(f"[enrich-maps] {len(candidates)} baris kandidat (Contact Person dan/atau Product "
              f"Interest kosong), proses maks {MAX_PER_RUN} run ini.")
-    candidates = candidates[:MAX_PER_RUN]
+    # Random sample, BUKAN selalu N teratas - kalau selalu ambil baris yang sama dari urutan
+    # sheet, query yang SAMA PERSIS ("{company} {country}") berulang identik tiap 30 menit selama
+    # berjam-jam (kejadian nyata: 0/80 sukses berturut-turut ~10 jam) - kemungkinan itu sinyal
+    # scraping paling jelas buat Google. Random sample nyebar beban ke seluruh backlog biar query
+    # yang sama gak keulang sesering itu.
+    if len(candidates) > MAX_PER_RUN:
+        candidates = random.sample(candidates, MAX_PER_RUN)
+    else:
+        random.shuffle(candidates)
     if not candidates:
         log.info("[enrich-maps] gak ada baris yang perlu diproses.")
         return
@@ -171,7 +179,7 @@ def run():
                     log.info(f"[enrich-maps] {company} ({country}) -> kategori gak kebaca, "
                              f"Product Interest dilewatin run ini.")
 
-            time.sleep(random.uniform(0.8, 1.6))
+            time.sleep(random.uniform(3.0, 6.0))
 
         browser.close()
 
