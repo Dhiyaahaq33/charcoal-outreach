@@ -1,7 +1,12 @@
 name: Check Quota (read-only)
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Tanggal DD/MM/YYYY (kosong = hari ini WIB)"
+        required: false
+        default: ""
 
 jobs:
   run:
@@ -23,4 +28,4 @@ jobs:
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           PYTHONUNBUFFERED: "1"
-        run: python -u scripts/check_quota.py
+        run: python -u scripts/check_quota.py "${{ github.event.inputs.date }}"
