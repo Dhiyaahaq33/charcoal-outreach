@@ -41,6 +41,19 @@ jobs:
         run: python -u telegram_bot.py
         continue-on-error: true
 
+      # Cek bounce email SEBELUM kirim batch baru - kalau ada offer sebelumnya yang bounce
+      # ("Message blocked" dari mailer-daemon), tanda "sent"-nya di-revert dulu di sini biar
+      # main.py yang jalan sesudahnya gak nganggep round itu udah selesai padahal gak nyampe.
+      - name: Check email bounces
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          PYTHONUNBUFFERED: "1"
+        run: python -u scripts/check_email_bounces.py
+        continue-on-error: true
+
       - name: Run outreach bot
         env:
           FONNTE_TOKEN: ${{ secrets.FONNTE_TOKEN }}
