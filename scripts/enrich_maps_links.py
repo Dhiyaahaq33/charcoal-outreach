@@ -128,13 +128,23 @@ def run():
             existing_contact = r.get("Contact Person", "").strip()
             need_product = not r.get("Product Interest", "").strip()
 
-            maps_url = existing_contact if "/maps/place/" in existing_contact else None
-            if not maps_url:
-                maps_url = _find_maps_profile(page, company, country)
-                if maps_url and "/maps/place/" in maps_url:
-                    updates.append({"range": f"{_col_letter(contact_col)}{r['_row_number']}",
-                                     "values": [[maps_url]]})
-                    contact_found += 1
+            # SELALU lewat pencarian dulu ("/maps/search/..."), JANGAN pernah goto() langsung ke
+            # URL /maps/place/ mentah - itu kesimpulan dari perbandingan langsung 18 Aug 2026:
+            # lead-discovery.yml (SELALU search dulu baru masuk ke place) tetap normal (203 tempat
+            # ke-scrape sukses), sementara run enrich-maps yang baris-barisnya udah punya Contact
+            # Person (jadi lompat langsung ke /place/ tanpa pencarian) konsisten 0/80 berturut-turut
+            # selama berjam-jam. Kemungkinan besar itu pola traffic yang beda (100% direct deep-link
+            # tanpa interleaving search) yang kena deteksi bot Google lebih keras. Biayanya 1
+            # navigasi ekstra per kandidat, tapi worth it drpd 0% sukses.
+            searched_url = _find_maps_profile(page, company, country)
+            if searched_url and "/maps/place/" in searched_url and not (
+                "/maps/place/" in existing_contact
+            ):
+                updates.append({"range": f"{_col_letter(contact_col)}{r['_row_number']}",
+                                 "values": [[searched_url]]})
+                contact_found += 1
+
+            maps_url = existing_contact if "/maps/place/" in existing_contact else searched_url
 
             category = None
             if need_product and maps_url and "/maps/place/" in maps_url:
