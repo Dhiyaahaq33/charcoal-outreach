@@ -51,6 +51,12 @@ from templates import render_whatsapp, render_email
 # (pola kirim identik & rapat = sinyal spam paling gampang kedeteksi). Delay acak, bukan fixed.
 _WA_SEND_DELAY_SECONDS = (4, 9)
 
+# Sama alasannya kayak _WA_SEND_DELAY_SECONDS, buat Email: dulu WA doang yang dikasih jeda, Email
+# nembak beruntun tanpa delay sama sekali lewat satu SMTP session - kejadian nyata 18 Aug 2026,
+# Gmail nge-block salah satu email ("Message rejected" dari mailer-daemon) karena pola kirimnya
+# keliatan otomatis (banyak email nyaris identik, ke banyak penerima beda, gak ada jeda manusiawi).
+_EMAIL_SEND_DELAY_SECONDS = (3, 7)
+
 _WIB = ZoneInfo("Asia/Jakarta")  # WIB = Bogor/Jakarta, UTC+7
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -250,6 +256,8 @@ def main():
                         time.sleep(random.uniform(*_WA_SEND_DELAY_SECONDS))
                 elif channel == "email":
                     email_count += 1
+                    if not DRY_RUN:
+                        time.sleep(random.uniform(*_EMAIL_SEND_DELAY_SECONDS))
             except Exception as e:
                 log.error(f"[error] gagal proses baris {row.get('_row_number')}: {e}")
     finally:
